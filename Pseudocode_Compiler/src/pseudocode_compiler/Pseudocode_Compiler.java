@@ -27,20 +27,24 @@ public class Pseudocode_Compiler {
                 break;
             }
 
-            //adds newline if scanner reads \n
+            //adds newline if current line is higher than previous
             if (scanner.getCurrentLine() > printedLine) {
                 System.out.println(); 
                 printedLine = scanner.getCurrentLine();
             }
 
             if (token.isError()) {
-                System.out.print("[" + "Error: " + token.getErrorMessage() + "] ");
+                System.out.print("[" + "Error: " + token.getErrorMessage() + "]");
             } else {
                 System.out.print("[" + token.getType() + ", " + token.getLexeme() + "] ");
             }
             
-            if (token.getType().equals("TK_END")) {
-                System.out.println("\nEnd of file reached.");
+            if (token.getType().equals("TK_END")){
+                System.out.println();
+                System.out.println("\n--- Symbol Table ---");
+                for (HashMap.Entry<String, String> entry : symbolTable.entrySet()) {
+                    System.out.println("Lexeme: " + entry.getKey() + " | Type: " + entry.getValue());
+                }
                 break;
             }
         }
@@ -54,6 +58,7 @@ class Scanner{
     private HashMap<String, String> symbolTable; 
     private Token token;
     private int currentLine = 1;
+    private Token pendingError = null;
     
     public Scanner(File inputFile, HashMap symbolTable){
         this.symbolTable = symbolTable;
@@ -92,18 +97,20 @@ class Scanner{
         }
     }
     
-    private void consumeMultiLineComment() throws IOException {
+    private Token consumeMultiLineComment() throws IOException {
         while (true) {
             if (ch == -1) {
-                System.out.println("Error: unterminated multiline comment");
-                break;
+                return new Token("[" + "Error: unterminated multiline comment at line " + currentLine + "]");
             }
+            if (ch == '\n') 
+                currentLine++;
+            
             if (ch == '-' && peek() == '-' && peekNext(2) == '-') {
                 ch = reader.read(); // consume first '-'
                 ch = reader.read(); // consume second '-'
                 ch = reader.read(); // consume third '-'
                 ch = reader.read();
-                break;
+                return null;
             }
             ch = reader.read();
         }
@@ -111,6 +118,7 @@ class Scanner{
     
     private void whiteSpaceAndCommentHandler() {
         try {
+            
             char current = (char) ch;
 
             while (Character.isWhitespace(current)) {
@@ -125,9 +133,10 @@ class Scanner{
                 ch = reader.read(); //consume first '-'
                 ch = reader.read(); //consume second '-'
 
-                if (peek() == '-') {
-                    ch = reader.read(); //consume third '-'
-                    consumeMultiLineComment();
+                if (ch == '-') {
+                    ch = reader.read(); //consume third '-'  
+                    Token error = consumeMultiLineComment();
+                    if (error != null) pendingError = error;
                 } else {
                     consumeSingleLineComment();
                 }
@@ -142,23 +151,32 @@ class Scanner{
     public int getCurrentLine() { return currentLine; }
     
     public Token getNextToken(){
-        boolean invalidChar = false;
-        
-        try {
+        try { 
+            whiteSpaceAndCommentHandler();
+            
+            if (pendingError != null) { //check for pending error first 
+                Token error = pendingError;
+                pendingError = null;
+                return error;
+            }
+            
             while (ch != -1) { //check if there are chars to be read
                 char current = (char) ch;
-
-                whiteSpaceAndCommentHandler(); //handle whitespaces and comments
-                
                 current = (char) ch;
 
                 if (Character.isLetter(current)) { //identifiers/keywords--------------------------------------
                     StringBuilder string = new StringBuilder();
 
-                    while (!Character.isWhitespace(current) && Character.isDefined(current)) {
+                    while (Character.isLetterOrDigit(current) || current == '_') {
                         //concat current char to lexeme
                         string.append(current);
                         ch = reader.read(); // read next char
+                        current = (char) ch;
+                    }
+                    
+                    if (current == '.') {
+                        string.append(current);
+                        ch = reader.read();
                         current = (char) ch;
                     }
 
@@ -168,29 +186,14 @@ class Scanner{
                     {
                         return token = new Token(lookupTable.lookup(lexeme), lexeme);
                     } else {
-                        //checks if identifier has invalid characters
-                        invalidChar = false;
-                        for(int i = 0; i < lexeme.length(); i++) {
-                            if(!(Character.isLetterOrDigit(lexeme.charAt(i)) || (lexeme.charAt(i) == '_'))) {
-                                invalidChar = true;
-                                break;
-                            }
+                        //add token to symbolTable as identifier instead
+                        if (!symbolTable.containsKey(lexeme)) {
+                            symbolTable.put(lexeme, "TK_ID");
                         }
-                        
-                        if(invalidChar) {
-                            return token = new Token(lexeme);
-                        }
-                        else {
-                            //add token to symbolTable as identifier instead
-                            if (!symbolTable.containsKey(lexeme)) {
-                                symbolTable.put(lexeme, "TK_ID");
-                            }
-                            return token = new Token("TK_ID", lexeme);
-                        }
+                        return token = new Token("TK_ID", lexeme);
                     }
                 } else if (Character.isDigit(current)) { //digits--------------------------------------
                     StringBuilder string = new StringBuilder();
-                    invalidChar = false;
 
                     while (Character.isDigit(current)) {
                         string.append(current);
@@ -227,11 +230,20 @@ class Scanner{
                         ch = reader.read();
                         String lexeme = string.toString();
                         return token = new Token("TK_STR_LIT", lexeme);
-                    } else 
-                        //return error token!!!
-                        return token = new Token("Unterminated string literal near: " + string.toString());
+                    } else if (current == '\n') {
+                        //string broken by a newline
+                        currentLine++;
+                        ch = reader.read();
+                        String lexeme = string.toString();
+                        return token = new Token("Unterminated string literal at line " + currentLine + " near: " + lexeme);
+                    } else {
+                        //hit EOF
+                        String lexeme = string.toString();
+                        return token = new Token("Unterminated string literal at " + currentLine + "near " + lexeme);
+                    }
                 } else if (current == '[') { //list literals--------------------------------------
                     StringBuilder string = new StringBuilder();
+                    string.append(current);
                     ch = reader.read(); //read opening bracket
                     current = (char) ch;
                     
@@ -245,21 +257,29 @@ class Scanner{
                     } 
                     
                     if (current == ']'){
+                        string.append(current);
                         ch = reader.read();
                         String lexeme = string.toString();
                         return token = new Token("TK_LIST_LIT", lexeme);
                     } else
-                        return token = new Token("Unterminated list literal near: " + string.toString());
-                } else {
-                    StringBuilder string = new StringBuilder();
-                    
-                    while (!Character.isWhitespace(current) && Character.isDefined(current)) {
-                        //concat current char to lexeme
-                        string.append(current);
+                        return token = new Token("Unterminated list literal near: " + string.toString() + " at line " + currentLine);
+                } else{
+                    StringBuilder badString = new StringBuilder();
+                    badString.append(current);
+                    ch = reader.read();
+                    current = (char) ch;
+                    while (ch != -1 && !Character.isWhitespace(current)
+                            && !Character.isLetter(current)
+                            && !Character.isDigit(current)
+                            && current != '"'
+                            && current != '[') {
+                        badString.append(current);
                         ch = reader.read(); // read next char
                         current = (char) ch;
                     }
-                    return token = new Token(string.toString());
+                    
+                    String badToken = badString.toString();
+                    return token = new Token("Invalid lexeme " + badToken + " at line " + currentLine);
                 }
             }
         } catch (IOException e) {
