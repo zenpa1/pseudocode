@@ -1,35 +1,67 @@
 package pseudocode_compiler;
-import java.util.HashMap;
 import java.io.*;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-public class Pseudocode_Compiler { 
+/**
+ * Entry point for the pseudocode scanner prototype.
+ *
+ * <p>This class supports two execution modes:
+ * <ul>
+ *     <li>Default mode: scans tokens from {@code program.txt}</li>
+ *     <li>Test mode ({@code --test}): executes embedded scanner regression programs</li>
+ * </ul>
+ *
+ * <p>The design intentionally keeps scanner validation close to the scanner implementation
+ * so language fixes can be verified quickly after each change.
+ */
+public class Pseudocode_Compiler {
     
     public static void main(String[] args) {
-        HashMap<String, String> symbolTable = new HashMap<>();
-        File program = new File("program.txt");
+        if (args.length > 0 && args[0].equals("--test")) {
+            /*
+            Passing --test in the command line will spin up
+            temporary files with hardcoded strings to run the given method.
+
+            Feel free to add or modify these programs to build more unit tests.
+            */
+            runScannerTests();
+            return;
+        }
+
+        scanAndPrintFromFile(new File("program.txt"));
+    }
+
+    /**
+     * Scans one pseudocode source file and prints tokens in stream order.
+     *
+     * <p>The output is line-aware for readability and prints the collected symbol table
+     * after the terminal {@code TK_END} token is reached.
+     */
+    private static void scanAndPrintFromFile(File programFile) {
+        //Dedicated symbol table stores user-defined identifiers discovered by the scanner.
+        SymbolTable symbolTable = new SymbolTable();
         Token token;
-        
-        //check if file exists
-        if(!program.exists()){
+
+        if (!programFile.exists()) {
             System.out.println("File does not exist.");
             System.exit(0);
         }
-        
-        Scanner scanner = new Scanner(program, symbolTable);
-        
+
+        Scanner scanner = new Scanner(programFile, symbolTable);
         int printedLine = 1;
-        
-        while(true){
+
+        while (true) {
             token = scanner.getNextToken();
-            
+
             if (token == null) {
                 System.out.println("\nEnd of file reached.");
                 break;
             }
 
-            //adds newline if current line is higher than previous
             if (scanner.getCurrentLine() > printedLine) {
-                System.out.println(); 
+                System.out.println();
                 printedLine = scanner.getCurrentLine();
             }
 
@@ -38,105 +70,465 @@ public class Pseudocode_Compiler {
             } else {
                 System.out.print("[" + token.getType() + ", " + token.getLexeme() + "] ");
             }
-            
-            if (token.getType().equals("TK_END")){
+
+            if (token.getType().equals("TK_END")) {
                 System.out.println();
                 System.out.println("\n--- Symbol Table ---");
-                for (HashMap.Entry<String, String> entry : symbolTable.entrySet()) {
+                for (Map.Entry<String, String> entry : symbolTable.entries()) {
                     System.out.println("Lexeme: " + entry.getKey() + " | Type: " + entry.getValue());
                 }
                 break;
             }
         }
     }
+
+    /**
+     * Runs scanner regression programs that document expected tokenization behavior.
+     *
+     * <p>Each embedded sample targets either broad language coverage or a specific bug fix.
+     * Keeping these samples executable provides lightweight, repeatable evidence that scanner
+     * behavior remains correct after refactors.
+     */
+    private static void runScannerTests() {
+        //Baseline sanity program for scanner smoke-testing.
+        runSingleScannerTest("Minimal valid program",
+                "Program Demo\n"
+                + "Declaration_Section\n"
+                + "integer value\n"
+                + "Statement_Section\n"
+                + "set value to 5\n"
+                + "say value\n"
+                + "End.");
+
+        //Covers primitive literal tokens, assignment, and arithmetic keyword tokens.
+        runSingleScannerTest("Literals and operators",
+                "Program Types\n"
+                + "Declaration_Section\n"
+                + "integer a\n"
+                + "double b\n"
+                + "string msg\n"
+                + "list items\n"
+                + "Statement_Section\n"
+                + "set a to 42\n"
+                + "set b to 3.14\n"
+                + "set msg to \"hello\"\n"
+                + "set items to [1,2,3]\n"
+                + "say a plus 1\n"
+                + "End.");
+
+            //Confirms scanner behavior with both single-line and multi-line comments.
+        runSingleScannerTest("Comment handling",
+                "Program Comments\n"
+                + "Declaration_Section\n"
+                + "integer x\n"
+                + "Statement_Section\n"
+                + "-- this is a single line comment\n"
+                + "---\n"
+                + "this is a\n"
+                + "block comment\n"
+                + "---\n"
+                + "set x to 10\n"
+                + "End.");
+
+        //Showcases conditionals, relational/logical operators, and loop-control tokens.
+        runSingleScannerTest("Control flow and boolean logic",
+                "Program ControlFlow\n"
+                + "Declaration_Section\n"
+                + "integer count\n"
+                + "boolean ok\n"
+                + "Statement_Section\n"
+                + "set count to 5\n"
+                + "set ok to true\n"
+                + "if count greater_than 0 and ok then\n"
+                + "say \"positive\"\n"
+                + "else_if count equal_to 0 or false then\n"
+                + "say \"zero\"\n"
+                + "else\n"
+                + "continue\n"
+                + "done\n"
+                + "while count greater_than 0 do\n"
+                + "set count to count minus 1\n"
+                + "break\n"
+                + "done\n"
+                + "End.");
+
+        //Exercises function-like keywords, access keywords, and common noise tokens.
+        runSingleScannerTest("Built-ins and noise tokens",
+                "Program Builtins\n"
+                + "Declaration_Section\n"
+                + "string text\n"
+                + "list items\n"
+                + "Statement_Section\n"
+                + "set text to \"alpha\"\n"
+                + "set items to [\"a\",1,true]\n"
+                + "say length_of text\n"
+                + "say find \"a\" in text\n"
+                + "say item 1 of items\n"
+                + "say join \"Hello\" with \"World\"\n"
+                + "say please join the text with a text\n"
+                + "End.");
+
+        //Covers remaining reserved words: type aliasing, constants, scope, repeat/until,
+        //for_every/range, consider/case/otherwise, input token, and exponent/modulo tokens.
+        runSingleScannerTest("Comprehensive reserved-word coverage",
+                "Program FullCoverage\n"
+                + "Declaration_Section\n"
+                + "define Number as integer\n"
+                + "constant double PI is 3.14\n"
+                + "array numbers\n"
+                + "Statement_Section\n"
+                + "scope\n"
+                + "set numbers to [1,2,3]\n"
+                + "set numbers to numbers\n"
+                + "repeat\n"
+                + "set numbers to numbers\n"
+                + "until false\n"
+                + "for_every i in range 1 to 3 do\n"
+                + "say i raised_to 2 modulo 2\n"
+                + "done\n"
+                + "consider i\n"
+                + "case 1 then\n"
+                + "say \"one\"\n"
+                + "otherwise\n"
+                + "read i\n"
+                + "done\n"
+                + "done\n"
+                + "End.");
+
+        //Regression test for scanner hangs caused by standalone special characters.
+        runSingleScannerTest("Invalid special characters should not hang",
+                "Program SpecialChars\n"
+                + "Declaration_Section\n"
+                + "integer value\n"
+                + "Statement_Section\n"
+                + "set value to @\n"
+                + "say value\n"
+                + "set value to #\n"
+                + "End.");
+
+        //Regression test to ensure invalid-lexeme errors include the actual offending value.
+        runSingleScannerTest("Invalid lexeme value should be shown",
+                "Program InvalidValue\n"
+                + "Declaration_Section\n"
+                + "integer x\n"
+                + "Statement_Section\n"
+                + "set x to @@!\n"
+                + "End.");
+
+        //Regression test to ensure attached identifier+special sequences are not split.
+        runSingleScannerTest("Identifier and special chars should be one invalid lexeme",
+                "Program MixedLexeme\n"
+                + "Declaration_Section\n"
+                + "integer value\n"
+                + "Statement_Section\n"
+                + "set value to abc@123\n"
+                + "End.");
+
+        //Regression test to ensure invalid number literals are flagged as one error.
+        runSingleScannerTest("Invalid number literal should throw error",
+                "Program InvalidNumber\n"
+                + "Declaration_Section\n"
+                + "integer num\n"
+                + "Statement_Section\n"
+                + "set num to 7s5\n"
+                + "set num to 3.14abc\n"
+                + "End.");
+
+        //Regression test for tokens split across lines and comma-separated identifiers.
+        runSingleScannerTest("Multiline comma-separated tokens",
+                "Program MultiLineComma\n"
+                + "Declaration_Section\n"
+                + "integer a,b,c\n"
+                + "Statement_Section\n"
+                + "read a,\n"
+                + "b,\n"
+                + "c\n"
+                + "say a,\n"
+                + "b,\n"
+                + "c\n"
+                + "End.");
+
+        //Regression test to ensure scanner continues after unterminated list errors.
+        runSingleScannerTest("Unterminated list should recover and continue",
+                "Program ListRecovery\n"
+                + "Declaration_Section\n"
+                + "list nums\n"
+                + "Statement_Section\n"
+                + "set nums to [5, 4, 2\n"
+                + "say \"still scanning\"\n"
+                + "End.");
+
+        //Regression test for invalid list literals that end with a trailing comma.
+        runSingleScannerTest("List trailing comma should throw error",
+                "Program TrailingComma\n"
+                + "Declaration_Section\n"
+                + "list nums\n"
+                + "Statement_Section\n"
+                + "set nums to [5, 4, 2,]\n"
+                + "say \"after list\"\n"
+                + "End.");
+
+        //Regression test to ensure unterminated-string errors include full source line.
+        runSingleScannerTest("Unterminated string should print full line",
+                "Program StringLine\n"
+                + "Declaration_Section\n"
+                + "string msg\n"
+                + "Statement_Section\n"
+                + "set msg to \"Hello, world!\n"
+                + "say msg\n"
+                + "End.");
+
+        //Regression test for negative numeric literals.
+        runSingleScannerTest("Negative integer literal should tokenize",
+                "Program NegativeInt\n"
+                + "Declaration_Section\n"
+                + "integer value\n"
+                + "Statement_Section\n"
+                + "set value to -5\n"
+                + "End.");
+
+        //Regression test for inline block comments: token after closing --- must remain intact.
+        runSingleScannerTest("Inline block comment should preserve next token",
+                "Program BlockInline\n"
+                + "Declaration_Section\n"
+                + "integer x\n"
+                + "Statement_Section\n"
+                + "set x to 1\n"
+                + "---hidden block---say x\n"
+                + "End.");
+
+        //Regression test for double literals without leading zero.
+        runSingleScannerTest("Leading-dot double literal should tokenize",
+                "Program LeadingDot\n"
+                + "Declaration_Section\n"
+                + "double value\n"
+                + "Statement_Section\n"
+                + "set value to .5\n"
+                + "End.");
+    }
+
+    /**
+     * Executes one scanner test program by writing it to a temporary file.
+     *
+     * <p>Using temporary files keeps scanner execution identical to real usage
+     * (file-based input) while still allowing self-contained tests inside source code.
+     */
+    private static void runSingleScannerTest(String testName, String source) {
+        File testFile = null;
+
+        try {
+            testFile = File.createTempFile("pseudocode_test_", ".txt");
+            try (FileWriter writer = new FileWriter(testFile)) {
+                writer.write(source);
+            }
+
+            System.out.println("\n=== Test: " + testName + " ===");
+            scanAndPrintFromFile(testFile);
+            System.out.println("=== End Test: " + testName + " ===");
+        } catch (IOException e) {
+            System.out.println("Test setup failed for '" + testName + "': " + e.getMessage());
+        } finally {
+            if (testFile != null && testFile.exists()) {
+                testFile.delete();
+            }
+        }
+    }
 }
 
+/**
+ * Lexical scanner for the pseudocode language.
+ *
+ * <p>This scanner performs single-pass tokenization directly from a character stream.
+ * It is intentionally explicit (rather than regex-heavy) to make lexical edge cases,
+ * recovery behavior, and diagnostics easier to reason about in a teaching context.
+ */
 class Scanner{
     private BufferedReader reader;
     private int ch;
-    private LookupTable lookupTable = new LookupTable();
-    private HashMap<String, String> symbolTable; 
-    private Token token;
+    //Central token hashmap for fixed/reserved lexemes.
+    private TokenHashMap tokenHashMap = new TokenHashMap();
+    //Reference to identifier symbol table used by the scanner.
+    private SymbolTable symbolTable; 
     private int currentLine = 1;
+    //Absolute 1-based character position in the input stream.
+    private int currentPosition = 0;
+    //Tracks characters in the current physical source line for richer diagnostics.
+    private StringBuilder currentLineBuffer = new StringBuilder();
+    //Stores the most recently completed physical source line.
+    private String lastCompletedLine = "";
     private Token pendingError = null;
     
-    public Scanner(File inputFile, HashMap symbolTable){
+    public Scanner(File inputFile, SymbolTable symbolTable){
         this.symbolTable = symbolTable;
         try {
             reader = new BufferedReader(new FileReader(inputFile));
-            ch = reader.read();
+            ch = readChar();
         } catch (IOException e) {
             System.out.println("Could not open file: " + e.getMessage());
         }
     }
-    
+
+    /**
+     * Reads one character from the source stream while updating scanner diagnostics state.
+     *
+     * <p>Why this helper exists:
+     * <ul>
+     *     <li>Guarantees position accounting is centralized and consistent</li>
+     *     <li>Keeps full-line snapshots available for high-quality error messages</li>
+     *     <li>Reduces subtle bugs caused by direct reader access in multiple methods</li>
+     * </ul>
+     */
+    private int readChar() throws IOException {
+        int nextChar = reader.read();
+        if (nextChar != -1) {
+            currentPosition++;
+
+            //Keep source-line snapshots updated so error messages can show full lines.
+            char read = (char) nextChar;
+            if (read == '\n') {
+                lastCompletedLine = currentLineBuffer.toString();
+                currentLineBuffer.setLength(0);
+            } else {
+                currentLineBuffer.append(read);
+            }
+        }
+        return nextChar;
+    }
+
+    //Builds a scanner error token with both line number and character position.
+    private Token errorAt(String details, int position) {
+        return new Token(details + " at line " + currentLine + ", position " + position);
+    }
+
+    //Builds a scanner error token at the scanner's current location.
+    private Token errorAtCurrentLocation(String details) {
+        return errorAt(details, currentPosition);
+    }
+
+    //Formats potentially problematic text so invalid lexeme values are always visible.
+    private String visibleLexeme(String rawLexeme) {
+        return "'" + rawLexeme.replace("\n", "\\n").replace("\t", "\\t") + "'";
+    }
+
+    //Returns a full-line snapshot for unterminated-string diagnostics.
+    private String lineSnapshotForStringError(boolean endedByNewline) {
+        if (endedByNewline) {
+            return lastCompletedLine;
+        }
+        return currentLineBuffer.toString();
+    }
+
+    /**
+     * Checks whether the current character represents a token boundary.
+     *
+     * <p>This method is a core rule for validating mixed lexemes (e.g., {@code abc@123},
+     * {@code 7s5}, {@code .5abc}). If a token candidate is followed by a non-boundary,
+     * the scanner upgrades it to one invalid lexeme to avoid misleading token splitting.
+     */
+    private boolean isLexemeBoundary(char current) {
+        return ch == -1
+                || Character.isWhitespace(current)
+                || current == '"'
+                || current == '['
+                || current == ']'
+                || current == ','
+                || current == '('
+                || current == ')';
+    }
+
+    //Consumes the remainder of an invalid mixed lexeme until the next boundary.
+    private String consumeUntilBoundary() throws IOException {
+        StringBuilder tail = new StringBuilder();
+        char current = (char) ch;
+
+        while (ch != -1 && !isLexemeBoundary(current)) {
+            tail.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        return tail.toString();
+    }
+
+    //Looks one character ahead without consuming it.
     private int peek() throws IOException{
         reader.mark(1);
         int nextChar = reader.read();
         reader.reset();
         return nextChar;
     }
-    
+
+    //Looks ahead by N characters and returns the Nth character.
     private int peekNext(int num) throws IOException {
         reader.mark(num);
         int nextChar = -1;
         for (int i = 0; i < num; i++) {
-            nextChar = reader.read(); //read num times to reach that position
+            nextChar = reader.read();
         }
         reader.reset();
         return nextChar;
     }
-    
+
+    //Consumes one single-line comment that starts with "--".
     private void consumeSingleLineComment() throws IOException {
         while (ch != '\n' && ch != -1) {
-            ch = reader.read();
+            ch = readChar();
         }
         if (ch == '\n') {
             currentLine++;
-            ch = reader.read();
+            ch = readChar();
         }
     }
-    
+
+    //Consumes one multi-line comment block "--- ... ---".
     private Token consumeMultiLineComment() throws IOException {
         while (true) {
             if (ch == -1) {
-                return new Token("[" + "Error: unterminated multiline comment at line " + currentLine + "]");
+                return errorAtCurrentLocation("Unterminated multiline comment");
             }
-            if (ch == '\n') 
+            if (ch == '\n') {
                 currentLine++;
-            
+            }
+
             if (ch == '-' && peek() == '-' && peekNext(2) == '-') {
-                ch = reader.read(); // consume first '-'
-                ch = reader.read(); // consume second '-'
-                ch = reader.read(); // consume third '-'
-                ch = reader.read();
+                //Consume exactly the closing delimiter and leave the next character intact.
+                ch = readChar();
+                ch = readChar();
+                ch = readChar();
                 return null;
             }
-            ch = reader.read();
+            ch = readChar();
         }
     }
-    
+
+    /**
+     * Consumes ignorable syntax: whitespace, single-line comments, and block comments.
+     *
+     * <p>This method recurses after each comment block so consecutive comment regions are
+     * fully consumed before token extraction continues.
+     */
     private void whiteSpaceAndCommentHandler() {
         try {
-            
             char current = (char) ch;
 
             while (Character.isWhitespace(current)) {
-                if (current == '\n') 
+                if (current == '\n') {
                     currentLine++;
-                ch = reader.read();
-                current = (char) ch; //update current each iteration
+                }
+                ch = readChar();
+                current = (char) ch;
             }
 
-            //check for comments after exiting whitespace loop
             if (current == '-' && peek() == '-') {
-                ch = reader.read(); //consume first '-'
-                ch = reader.read(); //consume second '-'
+                ch = readChar();
+                ch = readChar();
 
                 if (ch == '-') {
-                    ch = reader.read(); //consume third '-'  
+                    ch = readChar();
                     Token error = consumeMultiLineComment();
-                    if (error != null) pendingError = error;
+                    if (error != null) {
+                        pendingError = error;
+                    }
                 } else {
                     consumeSingleLineComment();
                 }
@@ -144,12 +536,292 @@ class Scanner{
             }
 
         } catch (IOException e) {
-            System.out.println("An error occurred: " + e.getMessage());
+            pendingError = errorAtCurrentLocation("I/O error while handling whitespace/comments: " + e.getMessage());
         }
     }
+
+    //Scans an identifier or reserved keyword token.
+    private Token scanIdentifierOrKeyword() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int identifierStartPosition = currentPosition;
+        char current = (char) ch;
+
+        while (Character.isLetterOrDigit(current) || current == '_') {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        if (current == '.') {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        //If an identifier is immediately followed by special characters, treat the
+        //whole sequence as one invalid lexeme instead of splitting it into tokens.
+        if (!isLexemeBoundary(current)) {
+            String mixedLexeme = string.toString() + consumeUntilBoundary();
+            return errorAt("Invalid lexeme " + visibleLexeme(mixedLexeme), identifierStartPosition);
+        }
+
+        String lexeme = string.toString();
+
+        if (tokenHashMap.contains(lexeme)) {
+            return new Token(tokenHashMap.lookup(lexeme), lexeme);
+        }
+
+        if (!symbolTable.containsIdentifier(lexeme)) {
+            symbolTable.addIdentifier(lexeme);
+        }
+        return new Token("TK_ID", lexeme);
+    }
+
+    /**
+     * Scans unsigned numeric literals.
+     *
+     * <p>Accepted forms:
+     * <ul>
+     *     <li>Integer: {@code 42}</li>
+     *     <li>Double: {@code 3.14}</li>
+     * </ul>
+     * Any contiguous non-boundary suffix (e.g., {@code 7s5}) is promoted to a single
+     * invalid lexeme for clearer diagnostics.
+     */
+    private Token scanNumberLiteral() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int numberStartPosition = currentPosition;
+        char current = (char) ch;
+
+        while (Character.isDigit(current)) {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        if (current == '.') {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+
+            while (Character.isDigit(current)) {
+                string.append(current);
+                ch = readChar();
+                current = (char) ch;
+            }
+
+            //A numeric literal followed by non-boundary characters is invalid (e.g., 3.14abc).
+            if (!isLexemeBoundary(current)) {
+                String invalidLexeme = string.toString() + consumeUntilBoundary();
+                return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+            }
+
+            return new Token("TK_DOUBLE_LIT", string.toString());
+        }
+
+        //A numeric literal followed by non-boundary characters is invalid (e.g., 7s5).
+        if (!isLexemeBoundary(current)) {
+            String invalidLexeme = string.toString() + consumeUntilBoundary();
+            return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+        }
+
+        return new Token("TK_INT_LIT", string.toString());
+    }
+
+    //Scans negative numeric literals that begin with '-' followed by digits.
+    private Token scanSignedNumberLiteral() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int numberStartPosition = currentPosition;
+
+        //Consume and record the sign.
+        string.append((char) ch);
+        ch = readChar();
+        char current = (char) ch;
+
+        while (Character.isDigit(current)) {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        if (current == '.') {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+
+            while (Character.isDigit(current)) {
+                string.append(current);
+                ch = readChar();
+                current = (char) ch;
+            }
+
+            if (!isLexemeBoundary(current)) {
+                String invalidLexeme = string.toString() + consumeUntilBoundary();
+                return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+            }
+
+            return new Token("TK_DOUBLE_LIT", string.toString());
+        }
+
+        if (!isLexemeBoundary(current)) {
+            String invalidLexeme = string.toString() + consumeUntilBoundary();
+            return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+        }
+
+        return new Token("TK_INT_LIT", string.toString());
+    }
+
+    //Scans double literals that start with a dot (e.g., .5).
+    private Token scanLeadingDotDoubleLiteral() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int numberStartPosition = currentPosition;
+
+        //Consume dot and then all following digits.
+        string.append((char) ch);
+        ch = readChar();
+        char current = (char) ch;
+
+        while (Character.isDigit(current)) {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        //Reject malformed forms such as .5abc.
+        if (!isLexemeBoundary(current)) {
+            String invalidLexeme = string.toString() + consumeUntilBoundary();
+            return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+        }
+
+        return new Token("TK_DOUBLE_LIT", string.toString());
+    }
+
+    //Scans a string literal enclosed in double quotes.
+    private Token scanStringLiteral() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int stringStartPosition = currentPosition;
+        ch = readChar();
+        char current = (char) ch;
+
+        while (current != '"' && current != '\n' && ch != -1) {
+            string.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        if (current == '"') {
+            ch = readChar();
+            return new Token("TK_STR_LIT", string.toString());
+        } else if (current == '\n') {
+            String fullLine = lineSnapshotForStringError(true);
+            currentLine++;
+            ch = readChar();
+            return errorAt("Unterminated string literal in line: " + visibleLexeme(fullLine), stringStartPosition);
+        }
+
+        String fullLine = lineSnapshotForStringError(false);
+        return errorAt("Unterminated string literal in line: " + visibleLexeme(fullLine), stringStartPosition);
+    }
+
+    /**
+     * Scans list literals enclosed in square brackets.
+     *
+     * <p>Includes two targeted recovery/validation rules:
+     * <ul>
+     *     <li>Reports unterminated lists on newline and resumes scanning next tokens</li>
+     *     <li>Rejects trailing commas before {@code ]}</li>
+     * </ul>
+     */
+    private Token scanListLiteral() throws IOException {
+        StringBuilder string = new StringBuilder();
+        int listStartPosition = currentPosition;
+        string.append((char) ch);
+        ch = readChar();
+        char current = (char) ch;
+        //Tracks the last non-whitespace character to detect a trailing comma before ']'.
+        char lastSignificantChar = '[';
+        int lastSignificantPosition = listStartPosition;
+
+        //Track whether we reached a physical line break before finding ']'.
+        boolean hitLineBreakBeforeClose = false;
+        while (current != ']' && ch != -1) {
+            //If a newline appears before ']', report an unterminated list and recover
+            //at the start of the next line so remaining tokens are still scanned.
+            if (current == '\n') {
+                hitLineBreakBeforeClose = true;
+                currentLine++;
+                ch = readChar();
+                break;
+            }
+
+            string.append(current);
+            if (!Character.isWhitespace(current)) {
+                lastSignificantChar = current;
+                lastSignificantPosition = currentPosition;
+            }
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        if (current == ']') {
+            //Reject lists ending with a trailing comma, e.g., [1, 2, 3,].
+            if (lastSignificantChar == ',') {
+                string.append(current);
+                ch = readChar();
+                return errorAt("Invalid trailing comma in list literal near: " + string.toString(), lastSignificantPosition);
+            }
+
+            string.append(current);
+            ch = readChar();
+            return new Token("TK_LIST_LIT", string.toString());
+        }
+
+        if (hitLineBreakBeforeClose) {
+            return errorAt("Unterminated list literal near: " + string.toString(), listStartPosition);
+        }
+
+        return errorAt("Unterminated list literal near: " + string.toString(), listStartPosition);
+    }
+
+    //Scans a fallback invalid lexeme token when no valid rule matches.
+    private Token scanInvalidLexeme() throws IOException {
+        StringBuilder badString = new StringBuilder();
+        int invalidStartPosition = currentPosition;
+        badString.append((char) ch);
+        ch = readChar();
+        char current = (char) ch;
+
+        while (ch != -1 && !Character.isWhitespace(current)
+                && !Character.isLetter(current)
+                && !Character.isDigit(current)
+                && current != '"'
+                && current != '[') {
+            badString.append(current);
+            ch = readChar();
+            current = (char) ch;
+        }
+
+        return errorAt("Invalid lexeme " + visibleLexeme(badString.toString()), invalidStartPosition);
+    }
+
+    //Scans a comma separator token used in variable and argument lists.
+    private Token scanCommaToken() throws IOException {
+        ch = readChar();
+        return new Token("TK_COMMA", ",");
+    }
     
+    /**
+     * Exposes current physical line for display formatting in the caller.
+     */
     public int getCurrentLine() { return currentLine; }
     
+    /**
+     * Returns the next token or {@code null} at end-of-file.
+     *
+     * <p>The method includes a progress safety guard: if a scan cycle fails to consume input,
+     * one character is force-consumed and emitted as an invalid lexeme. This prevents
+     * non-terminating loops on unexpected input.
+     */
     public Token getNextToken(){
         try { 
             whiteSpaceAndCommentHandler();
@@ -160,140 +832,79 @@ class Scanner{
                 return error;
             }
             
-            while (ch != -1) { //check if there are chars to be read
+            while (ch != -1) {
+                //Capture current position to ensure each scan cycle consumes input.
+                int tokenStartPosition = currentPosition;
                 char current = (char) ch;
-                current = (char) ch;
+                Token scannedToken;
 
-                if (Character.isLetter(current)) { //identifiers/keywords--------------------------------------
-                    StringBuilder string = new StringBuilder();
-
-                    while (Character.isLetterOrDigit(current) || current == '_') {
-                        //concat current char to lexeme
-                        string.append(current);
-                        ch = reader.read(); // read next char
-                        current = (char) ch;
-                    }
-                    
-                    if (current == '.') {
-                        string.append(current);
-                        ch = reader.read();
-                        current = (char) ch;
-                    }
-
-                    String lexeme = string.toString();
-
-                    if (lookupTable.contains(lexeme) == true) //check if token is a reserved word
-                    {
-                        return token = new Token(lookupTable.lookup(lexeme), lexeme);
-                    } else {
-                        //add token to symbolTable as identifier instead
-                        if (!symbolTable.containsKey(lexeme)) {
-                            symbolTable.put(lexeme, "TK_ID");
-                        }
-                        return token = new Token("TK_ID", lexeme);
-                    }
-                } else if (Character.isDigit(current)) { //digits--------------------------------------
-                    StringBuilder string = new StringBuilder();
-
-                    while (Character.isDigit(current)) {
-                        string.append(current);
-                        ch = reader.read(); //read next char
-                        current = (char) ch;
-                    }
-
-                    if (current == '.') {
-                        string.append(current);
-                        ch = reader.read();
-                        current = (char) ch;
-                        while (Character.isDigit(current)) {
-                            string.append(current);
-                            ch = reader.read();
-                            current = (char) ch;
-                        }
-                        String lexeme = string.toString();
-                        return token = new Token("TK_DOUBLE_LIT", lexeme);
-                    }
-                    String lexeme = string.toString();
-                    return token = new Token("TK_INT_LIT", lexeme);
-                } else if (current == '"') { //string literals--------------------------------------
-                    StringBuilder string = new StringBuilder();
-                    ch = reader.read(); //read opening quote
-                    current = (char) ch;
-
-                    while (current != '"' && current != '\n' && ch != -1) {
-                        string.append(current);
-                        ch = reader.read();
-                        current = (char) ch;
-                    }
-
-                    if (current == '"') {
-                        ch = reader.read();
-                        String lexeme = string.toString();
-                        return token = new Token("TK_STR_LIT", lexeme);
-                    } else if (current == '\n') {
-                        //string broken by a newline
-                        currentLine++;
-                        ch = reader.read();
-                        String lexeme = string.toString();
-                        return token = new Token("Unterminated string literal at line " + currentLine + " near: " + lexeme);
-                    } else {
-                        //hit EOF
-                        String lexeme = string.toString();
-                        return token = new Token("Unterminated string literal at " + currentLine + "near " + lexeme);
-                    }
-                } else if (current == '[') { //list literals--------------------------------------
-                    StringBuilder string = new StringBuilder();
-                    string.append(current);
-                    ch = reader.read(); //read opening bracket
-                    current = (char) ch;
-                    
-                    while (current != ']' && ch != -1) {
-                        whiteSpaceAndCommentHandler();
-                        current = (char) ch;
-                        if (current == ']') break;
-                        string.append(current);
-                        ch = reader.read();   
-                        current = (char) ch;
-                    } 
-                    
-                    if (current == ']'){
-                        string.append(current);
-                        ch = reader.read();
-                        String lexeme = string.toString();
-                        return token = new Token("TK_LIST_LIT", lexeme);
-                    } else
-                        return token = new Token("Unterminated list literal near: " + string.toString() + " at line " + currentLine);
-                } else{
-                    StringBuilder badString = new StringBuilder();
-                    badString.append(current);
-                    ch = reader.read();
-                    current = (char) ch;
-                    while (ch != -1 && !Character.isWhitespace(current)
-                            && !Character.isLetter(current)
-                            && !Character.isDigit(current)
-                            && current != '"'
-                            && current != '[') {
-                        badString.append(current);
-                        ch = reader.read(); // read next char
-                        current = (char) ch;
-                    }
-                    
-                    String badToken = badString.toString();
-                    return token = new Token("Invalid lexeme " + badToken + " at line " + currentLine);
+                if (Character.isLetter(current)) {
+                    scannedToken = scanIdentifierOrKeyword();
+                } else if (Character.isDigit(current)) {
+                    scannedToken = scanNumberLiteral();
+                } else if (current == '-' && peek() != -1 && Character.isDigit((char) peek())) {
+                    //Treat '-<digits>' as a signed numeric literal.
+                    scannedToken = scanSignedNumberLiteral();
+                } else if (current == '.' && peek() != -1 && Character.isDigit((char) peek())) {
+                    //Treat '.<digits>' as a leading-dot double literal.
+                    scannedToken = scanLeadingDotDoubleLiteral();
+                } else if (current == '"') {
+                    scannedToken = scanStringLiteral();
+                } else if (current == '[') {
+                    scannedToken = scanListLiteral();
+                } else if (current == ',') {
+                    scannedToken = scanCommaToken();
+                } else {
+                    scannedToken = scanInvalidLexeme();
                 }
+
+                //Safety net: if scanner did not advance, force-consume one character and emit error.
+                if (currentPosition == tokenStartPosition && ch != -1) {
+                    int stalledChar = ch;
+                    ch = readChar();
+                    return errorAt("Invalid lexeme " + visibleLexeme(String.valueOf((char) stalledChar)), tokenStartPosition);
+                }
+
+                return scannedToken;
             }
         } catch (IOException e) {
-            System.out.println("An error occurred: " + e.getMessage());
+            return errorAtCurrentLocation("I/O error while scanning token: " + e.getMessage());
         }
         return null;
     }
 }
 
+/**
+ * Symbol table for user-defined identifiers discovered during scanning.
+ */
+class SymbolTable {
+    //LinkedHashMap preserves insertion order when printing the table.
+    private final LinkedHashMap<String, String> identifiers = new LinkedHashMap<>();
+
+    //Registers a lexeme as an identifier symbol.
+    public void addIdentifier(String lexeme) {
+        identifiers.put(lexeme, "TK_ID");
+    }
+
+    //Checks if a lexeme has already been declared as an identifier symbol.
+    public boolean containsIdentifier(String lexeme) {
+        return identifiers.containsKey(lexeme);
+    }
+
+    //Returns all identifier entries for reporting/debug output.
+    public Iterable<Map.Entry<String, String>> entries() {
+        return identifiers.entrySet();
+    }
+}
+
+/**
+ * Token data transfer object used by scanner output.
+ */
 class Token{
-    private String type;
-    private String lexeme;
-    private boolean isError;
-    private String errorMessage;
+    private final String type;
+    private final String lexeme;
+    private final boolean isError;
+    private final String errorMessage;
     
     public Token(String type, String lexeme){
         this.type = type;
@@ -314,20 +925,29 @@ class Token{
     public String getType(){ return type; }
     public String getLexeme(){ return lexeme; }
     
+    @Override
     public String toString(){
         if (isError) return "(ERROR: " + errorMessage + ")";
         return "(" + type + ", " + lexeme + ")";
     }
 }
 
-class LookupTable{
-    private HashMap<String, String> table;
+/**
+ * Reserved-token lookup table.
+ *
+ * <p>Maps fixed pseudocode lexemes to their token kinds. This is separate from
+ * {@link SymbolTable}, which stores only user-defined identifiers.
+ */
+class TokenHashMap{
+    //Stores lexeme-to-token mappings for all reserved/static tokens.
+    private final HashMap<String, String> table;
     
-    public LookupTable(){
+    public TokenHashMap(){
         table = new HashMap<>();
         initialize();
     }
     
+    //Populates the hashmap with all predefined language tokens.
     private void initialize(){
         table.put("Program", "TK_PROG");
         table.put("End.", "TK_END");
@@ -355,7 +975,6 @@ class LookupTable{
         table.put("divided_by", "TK_DIV");
         table.put("modulo", "TK_MOD");
         table.put("raised_to", "TK_EXP");
-        table.put("is", "TK_IS");
         table.put("is_not", "TK_ISNOT");
         table.put("equal_to", "TK_EQTO");
         table.put("not_equal_to", "TK_NOTEQTO");
@@ -402,6 +1021,7 @@ class LookupTable{
         table.put("---", "TK_COMMENT_MULTI");
     }
     
+    //Returns token type for a lexeme, or null if the lexeme is not reserved.
     public String lookup(String lexeme){
         if (table.containsKey(lexeme)) {
             return table.get(lexeme);
@@ -409,6 +1029,7 @@ class LookupTable{
         return null;
     }
     
+    //Checks whether a lexeme exists in the predefined token hashmap.
     public boolean contains(String lexeme) {
         return table.containsKey(lexeme);
     }
