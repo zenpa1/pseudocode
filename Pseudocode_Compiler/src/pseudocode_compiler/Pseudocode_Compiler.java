@@ -57,6 +57,11 @@ public class Pseudocode_Compiler {
 
             if (token == null) {
                 System.out.println("\nEnd of file reached.");
+                System.out.println();
+                System.out.println("\n--- Symbol Table ---");
+                for (Map.Entry<String, String> entry : symbolTable.entries()) {
+                    System.out.println("Lexeme: " + entry.getKey() + " | Type: " + entry.getValue());
+                }
                 break;
             }
 
@@ -69,15 +74,6 @@ public class Pseudocode_Compiler {
                 System.out.print("[" + "Error: " + token.getErrorMessage() + "]");
             } else {
                 System.out.print("[" + token.getType() + ", " + token.getLexeme() + "] ");
-            }
-
-            if (token.getType().equals("TK_END")) {
-                System.out.println();
-                System.out.println("\n--- Symbol Table ---");
-                for (Map.Entry<String, String> entry : symbolTable.entries()) {
-                    System.out.println("Lexeme: " + entry.getKey() + " | Type: " + entry.getValue());
-                }
-                break;
             }
         }
     }
@@ -397,7 +393,7 @@ class Scanner{
 
     //Builds a scanner error token with both line number and character position.
     private Token errorAt(String details, int position) {
-        return new Token(details + " at line " + currentLine + ", position " + position);
+        return new Token(details.trim() + " at line " + currentLine + ", position " + position);
     }
 
     //Builds a scanner error token at the scanner's current location.
@@ -425,15 +421,18 @@ class Scanner{
      * {@code 7s5}, {@code .5abc}). If a token candidate is followed by a non-boundary,
      * the scanner upgrades it to one invalid lexeme to avoid misleading token splitting.
      */
-    private boolean isLexemeBoundary(char current) {
-        return ch == -1
+    private boolean isLexemeBoundary(char current) throws IOException {
+            return ch == -1
                 || Character.isWhitespace(current)
                 || current == '"'
                 || current == '['
                 || current == ']'
                 || current == ','
                 || current == '('
-                || current == ')';
+                || current == ')'
+                || (current == '-' && peek() == '-')
+                || (current == '-' && peek() == '-' && peekNext(2) == '-');
+        
     }
 
     //Consumes the remainder of an invalid mixed lexeme until the next boundary.
@@ -552,7 +551,8 @@ class Scanner{
             current = (char) ch;
         }
 
-        if (current == '.') {
+        //Accepts 'End.' as the only keyword that can use a special symbol
+        if (string.toString().equals("End") && current == '.') {
             string.append(current);
             ch = readChar();
             current = (char) ch;
@@ -615,6 +615,10 @@ class Scanner{
                 String invalidLexeme = string.toString() + consumeUntilBoundary();
                 return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
             }
+            
+            if (string.charAt(string.length()-1) == '.') {
+                return errorAt("Invalid lexeme " + visibleLexeme(string.toString()), numberStartPosition);
+            }
 
             return new Token("TK_DOUBLE_LIT", string.toString());
         }
@@ -658,6 +662,10 @@ class Scanner{
             if (!isLexemeBoundary(current)) {
                 String invalidLexeme = string.toString() + consumeUntilBoundary();
                 return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
+            }
+            
+            if (string.charAt(string.length()-1) == '.') {
+                return errorAt("Invalid lexeme " + visibleLexeme(string.toString()), numberStartPosition);
             }
 
             return new Token("TK_DOUBLE_LIT", string.toString());
@@ -714,9 +722,12 @@ class Scanner{
             return new Token("TK_STR_LIT", string.toString());
         } else if (current == '\n') {
             String fullLine = lineSnapshotForStringError(true);
+            Token error = errorAt("Unterminated string literal in line: " + fullLine, stringStartPosition);
+            
             currentLine++;
             ch = readChar();
-            return errorAt("Unterminated string literal in line: " + visibleLexeme(fullLine), stringStartPosition);
+            
+            return error;
         }
 
         String fullLine = lineSnapshotForStringError(false);
@@ -791,11 +802,7 @@ class Scanner{
         ch = readChar();
         char current = (char) ch;
 
-        while (ch != -1 && !Character.isWhitespace(current)
-                && !Character.isLetter(current)
-                && !Character.isDigit(current)
-                && current != '"'
-                && current != '[') {
+        while (ch != -1 && !Character.isWhitespace(current)) {
             badString.append(current);
             ch = readChar();
             current = (char) ch;
