@@ -1,4 +1,5 @@
 package pseudocode_compiler;
+
 import java.io.*;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -7,17 +8,20 @@ import java.util.Map;
 /**
  * Entry point for the pseudocode scanner prototype.
  *
- * <p>This class supports two execution modes:
+ * <p>
+ * This class supports two execution modes:
  * <ul>
- *     <li>Default mode: scans tokens from {@code program.txt}</li>
- *     <li>Test mode ({@code --test}): executes embedded scanner regression programs</li>
+ * <li>Default mode: scans tokens from {@code program.txt}</li>
+ * <li>Test mode ({@code --test}): executes embedded scanner regression
+ * programs</li>
  * </ul>
  *
- * <p>The design intentionally keeps scanner validation close to the scanner implementation
- * so language fixes can be verified quickly after each change.
+ * <p>
+ * The design intentionally keeps scanner validation close to the scanner
+ * implementation so language fixes can be verified quickly after each change.
  */
 public class Pseudocode_Compiler {
-    
+
     public static void main(String[] args) {
         if (args.length > 0 && args[0].equals("--test")) {
             /*
@@ -25,7 +29,7 @@ public class Pseudocode_Compiler {
             temporary files with hardcoded strings to run the given method.
 
             Feel free to add or modify these programs to build more unit tests.
-            */
+             */
             runScannerTests();
             return;
         }
@@ -36,8 +40,9 @@ public class Pseudocode_Compiler {
     /**
      * Scans one pseudocode source file and prints tokens in stream order.
      *
-     * <p>The output is line-aware for readability and prints the collected symbol table
-     * after the terminal {@code TK_END} token is reached.
+     * <p>
+     * The output is line-aware for readability and prints the collected symbol
+     * table after the terminal {@code TK_END} token is reached.
      */
     private static void scanAndPrintFromFile(File programFile) {
         //Dedicated symbol table stores user-defined identifiers discovered by the scanner.
@@ -71,7 +76,7 @@ public class Pseudocode_Compiler {
             }
 
             if (token.isError()) {
-                System.out.print("[" + "Error: " + token.getErrorMessage() + "]");
+                System.out.print("[" + "Error: " + token.getErrorMessage() + "]" + "\n");
             } else {
                 System.out.print("[" + token.getType() + ", " + token.getLexeme() + "] ");
             }
@@ -79,11 +84,14 @@ public class Pseudocode_Compiler {
     }
 
     /**
-     * Runs scanner regression programs that document expected tokenization behavior.
+     * Runs scanner regression programs that document expected tokenization
+     * behavior.
      *
-     * <p>Each embedded sample targets either broad language coverage or a specific bug fix.
-     * Keeping these samples executable provides lightweight, repeatable evidence that scanner
-     * behavior remains correct after refactors.
+     * <p>
+     * Each embedded sample targets either broad language coverage or a specific
+     * bug fix. Keeping these samples executable provides lightweight,
+     * repeatable evidence that scanner behavior remains correct after
+     * refactors.
      */
     private static void runScannerTests() {
         //Baseline sanity program for scanner smoke-testing.
@@ -112,7 +120,7 @@ public class Pseudocode_Compiler {
                 + "say a plus 1\n"
                 + "End.");
 
-            //Confirms scanner behavior with both single-line and multi-line comments.
+        //Confirms scanner behavior with both single-line and multi-line comments.
         runSingleScannerTest("Comment handling",
                 "Program Comments\n"
                 + "Declaration_Section\n"
@@ -306,8 +314,10 @@ public class Pseudocode_Compiler {
     /**
      * Executes one scanner test program by writing it to a temporary file.
      *
-     * <p>Using temporary files keeps scanner execution identical to real usage
-     * (file-based input) while still allowing self-contained tests inside source code.
+     * <p>
+     * Using temporary files keeps scanner execution identical to real usage
+     * (file-based input) while still allowing self-contained tests inside
+     * source code.
      */
     private static void runSingleScannerTest(String testName, String source) {
         File testFile = null;
@@ -334,17 +344,20 @@ public class Pseudocode_Compiler {
 /**
  * Lexical scanner for the pseudocode language.
  *
- * <p>This scanner performs single-pass tokenization directly from a character stream.
- * It is intentionally explicit (rather than regex-heavy) to make lexical edge cases,
- * recovery behavior, and diagnostics easier to reason about in a teaching context.
+ * <p>
+ * This scanner performs single-pass tokenization directly from a character
+ * stream. It is intentionally explicit (rather than regex-heavy) to make
+ * lexical edge cases, recovery behavior, and diagnostics easier to reason about
+ * in a teaching context.
  */
-class Scanner{
+class Scanner {
+
     private BufferedReader reader;
     private int ch;
     //Central token hashmap for fixed/reserved lexemes.
     private TokenHashMap tokenHashMap = new TokenHashMap();
     //Reference to identifier symbol table used by the scanner.
-    private SymbolTable symbolTable; 
+    private SymbolTable symbolTable;
     private int currentLine = 1;
     //Absolute 1-based character position in the input stream.
     private int currentPosition = 0;
@@ -353,8 +366,8 @@ class Scanner{
     //Stores the most recently completed physical source line.
     private String lastCompletedLine = "";
     private Token pendingError = null;
-    
-    public Scanner(File inputFile, SymbolTable symbolTable){
+
+    public Scanner(File inputFile, SymbolTable symbolTable) {
         this.symbolTable = symbolTable;
         try {
             reader = new BufferedReader(new FileReader(inputFile));
@@ -365,13 +378,17 @@ class Scanner{
     }
 
     /**
-     * Reads one character from the source stream while updating scanner diagnostics state.
+     * Reads one character from the source stream while updating scanner
+     * diagnostics state.
      *
-     * <p>Why this helper exists:
+     * <p>
+     * Why this helper exists:
      * <ul>
-     *     <li>Guarantees position accounting is centralized and consistent</li>
-     *     <li>Keeps full-line snapshots available for high-quality error messages</li>
-     *     <li>Reduces subtle bugs caused by direct reader access in multiple methods</li>
+     * <li>Guarantees position accounting is centralized and consistent</li>
+     * <li>Keeps full-line snapshots available for high-quality error
+     * messages</li>
+     * <li>Reduces subtle bugs caused by direct reader access in multiple
+     * methods</li>
      * </ul>
      */
     private int readChar() throws IOException {
@@ -417,12 +434,14 @@ class Scanner{
     /**
      * Checks whether the current character represents a token boundary.
      *
-     * <p>This method is a core rule for validating mixed lexemes (e.g., {@code abc@123},
-     * {@code 7s5}, {@code .5abc}). If a token candidate is followed by a non-boundary,
-     * the scanner upgrades it to one invalid lexeme to avoid misleading token splitting.
+     * <p>
+     * This method is a core rule for validating mixed lexemes (e.g., {@code abc@123},
+     * {@code 7s5}, {@code .5abc}). If a token candidate is followed by a
+     * non-boundary, the scanner upgrades it to one invalid lexeme to avoid
+     * misleading token splitting.
      */
     private boolean isLexemeBoundary(char current) throws IOException {
-            return ch == -1
+        return ch == -1
                 || Character.isWhitespace(current)
                 || current == '"'
                 || current == '['
@@ -432,7 +451,7 @@ class Scanner{
                 || current == ')'
                 || (current == '-' && peek() == '-')
                 || (current == '-' && peek() == '-' && peekNext(2) == '-');
-        
+
     }
 
     //Consumes the remainder of an invalid mixed lexeme until the next boundary.
@@ -450,7 +469,7 @@ class Scanner{
     }
 
     //Looks one character ahead without consuming it.
-    private int peek() throws IOException{
+    private int peek() throws IOException {
         reader.mark(1);
         int nextChar = reader.read();
         reader.reset();
@@ -481,10 +500,15 @@ class Scanner{
 
     //Consumes one multi-line comment block "--- ... ---".
     private Token consumeMultiLineComment() throws IOException {
+        int commentStartLine = currentLine;
+        int commentStartPosition = currentPosition;
+
         while (true) {
             if (ch == -1) {
-                return errorAtCurrentLocation("Unterminated multiline comment");
+                return errorAt("Unterminated multiline comment ", commentStartPosition);
+                //return errorAtCurrentLocation("Unterminated multiline comment");
             }
+
             if (ch == '\n') {
                 currentLine++;
             }
@@ -501,10 +525,12 @@ class Scanner{
     }
 
     /**
-     * Consumes ignorable syntax: whitespace, single-line comments, and block comments.
+     * Consumes ignorable syntax: whitespace, single-line comments, and block
+     * comments.
      *
-     * <p>This method recurses after each comment block so consecutive comment regions are
-     * fully consumed before token extraction continues.
+     * <p>
+     * This method recurses after each comment block so consecutive comment
+     * regions are fully consumed before token extraction continues.
      */
     private void whiteSpaceAndCommentHandler() {
         try {
@@ -580,13 +606,14 @@ class Scanner{
     /**
      * Scans unsigned numeric literals.
      *
-     * <p>Accepted forms:
+     * <p>
+     * Accepted forms:
      * <ul>
-     *     <li>Integer: {@code 42}</li>
-     *     <li>Double: {@code 3.14}</li>
+     * <li>Integer: {@code 42}</li>
+     * <li>Double: {@code 3.14}</li>
      * </ul>
-     * Any contiguous non-boundary suffix (e.g., {@code 7s5}) is promoted to a single
-     * invalid lexeme for clearer diagnostics.
+     * Any contiguous non-boundary suffix (e.g., {@code 7s5}) is promoted to a
+     * single invalid lexeme for clearer diagnostics.
      */
     private Token scanNumberLiteral() throws IOException {
         StringBuilder string = new StringBuilder();
@@ -603,7 +630,7 @@ class Scanner{
             string.append(current);
             ch = readChar();
             current = (char) ch;
-
+            
             while (Character.isDigit(current)) {
                 string.append(current);
                 ch = readChar();
@@ -615,8 +642,8 @@ class Scanner{
                 String invalidLexeme = string.toString() + consumeUntilBoundary();
                 return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
             }
-            
-            if (string.charAt(string.length()-1) == '.') {
+
+            if (string.charAt(string.length() - 1) == '.') {
                 return errorAt("Invalid lexeme " + visibleLexeme(string.toString()), numberStartPosition);
             }
 
@@ -663,8 +690,8 @@ class Scanner{
                 String invalidLexeme = string.toString() + consumeUntilBoundary();
                 return errorAt("Invalid lexeme " + visibleLexeme(invalidLexeme), numberStartPosition);
             }
-            
-            if (string.charAt(string.length()-1) == '.') {
+
+            if (string.charAt(string.length() - 1) == '.') {
                 return errorAt("Invalid lexeme " + visibleLexeme(string.toString()), numberStartPosition);
             }
 
@@ -712,7 +739,25 @@ class Scanner{
         char current = (char) ch;
 
         while (current != '"' && current != '\n' && ch != -1) {
-            string.append(current);
+            // handle escape sequences
+            if (current == '\\') {
+                ch = readChar();
+                current = (char) ch;
+
+                switch (current) {
+                    case '"':
+                        string.append('"');   // \" → "
+                        break;
+                    case '\\':
+                        string.append('\\');  // \\ → \
+                        break;
+                    default:
+                        // unrecognized escape sequence → error
+                        return errorAt("Invalid escape sequence: \\" + current + " at line " + currentLine, currentPosition);
+                }
+            } else {
+                string.append(current); // normal character
+            }
             ch = readChar();
             current = (char) ch;
         }
@@ -723,10 +768,10 @@ class Scanner{
         } else if (current == '\n') {
             String fullLine = lineSnapshotForStringError(true);
             Token error = errorAt("Unterminated string literal in line: " + fullLine, stringStartPosition);
-            
+
             currentLine++;
             ch = readChar();
-            
+
             return error;
         }
 
@@ -737,13 +782,15 @@ class Scanner{
     /**
      * Scans list literals enclosed in square brackets.
      *
-     * <p>Includes two targeted recovery/validation rules:
+     * <p>
+     * Includes two targeted recovery/validation rules:
      * <ul>
-     *     <li>Reports unterminated lists on newline and resumes scanning next tokens</li>
-     *     <li>Rejects trailing commas before {@code ]}</li>
+     * <li>Reports unterminated lists on newline and resumes scanning next
+     * tokens</li>
+     * <li>Rejects trailing commas before {@code ]}</li>
      * </ul>
      */
-    private Token scanListLiteral() throws IOException {
+    /*private Token scanListLiteral() throws IOException {
         StringBuilder string = new StringBuilder();
         int listStartPosition = currentPosition;
         string.append((char) ch);
@@ -792,9 +839,28 @@ class Scanner{
         }
 
         return errorAt("Unterminated list literal near: " + string.toString(), listStartPosition);
+    }*/
+    private Token scanLeftBracket() throws IOException {
+        ch = readChar();
+        return new Token("TK_LEFT_BRACKET", "[");
     }
 
-    //Scans a fallback invalid lexeme token when no valid rule matches.
+    private Token scanLeftParen() throws IOException {
+        ch = readChar();
+        return new Token("TK_LEFT_PAREN", "(");
+    }
+
+    private Token scanRightParen() throws IOException {
+        ch = readChar();
+        return new Token("TK_RIGHT_PAREN", ")");
+    }
+
+    private Token scanRightBracket() throws IOException {
+        ch = readChar();
+        return new Token("TK_RIGHT_BRACKET", "]");
+    }
+
+    //scans a fallback invalid lexeme token when no valid rule matches.
     private Token scanInvalidLexeme() throws IOException {
         StringBuilder badString = new StringBuilder();
         int invalidStartPosition = currentPosition;
@@ -816,29 +882,32 @@ class Scanner{
         ch = readChar();
         return new Token("TK_COMMA", ",");
     }
-    
+
     /**
      * Exposes current physical line for display formatting in the caller.
      */
-    public int getCurrentLine() { return currentLine; }
-    
+    public int getCurrentLine() {
+        return currentLine;
+    }
+
     /**
      * Returns the next token or {@code null} at end-of-file.
      *
-     * <p>The method includes a progress safety guard: if a scan cycle fails to consume input,
-     * one character is force-consumed and emitted as an invalid lexeme. This prevents
-     * non-terminating loops on unexpected input.
+     * <p>
+     * The method includes a progress safety guard: if a scan cycle fails to
+     * consume input, one character is force-consumed and emitted as an invalid
+     * lexeme. This prevents non-terminating loops on unexpected input.
      */
-    public Token getNextToken(){
-        try { 
+    public Token getNextToken() {
+        try {
             whiteSpaceAndCommentHandler();
-            
+
             if (pendingError != null) { //check for pending error first 
                 Token error = pendingError;
                 pendingError = null;
                 return error;
             }
-            
+
             while (ch != -1) {
                 //Capture current position to ensure each scan cycle consumes input.
                 int tokenStartPosition = currentPosition;
@@ -858,14 +927,20 @@ class Scanner{
                 } else if (current == '"') {
                     scannedToken = scanStringLiteral();
                 } else if (current == '[') {
-                    scannedToken = scanListLiteral();
+                    scannedToken = scanLeftBracket();
+                } else if (current == ']') {
+                    scannedToken = scanRightBracket();
+                } else if (current == '(') {
+                    scannedToken = scanLeftParen();
+                } else if (current == ')') {
+                    scannedToken = scanRightParen();
                 } else if (current == ',') {
                     scannedToken = scanCommaToken();
                 } else {
                     scannedToken = scanInvalidLexeme();
                 }
 
-                //Safety net: if scanner did not advance, force-consume one character and emit error.
+                //if scanner did not advance, force-consume one character and emit error.
                 if (currentPosition == tokenStartPosition && ch != -1) {
                     int stalledChar = ch;
                     ch = readChar();
@@ -885,6 +960,7 @@ class Scanner{
  * Symbol table for user-defined identifiers discovered during scanning.
  */
 class SymbolTable {
+
     //LinkedHashMap preserves insertion order when printing the table.
     private final LinkedHashMap<String, String> identifiers = new LinkedHashMap<>();
 
@@ -907,34 +983,48 @@ class SymbolTable {
 /**
  * Token data transfer object used by scanner output.
  */
-class Token{
+class Token {
+
     private final String type;
     private final String lexeme;
     private final boolean isError;
     private final String errorMessage;
-    
-    public Token(String type, String lexeme){
+
+    public Token(String type, String lexeme) {
         this.type = type;
         this.lexeme = lexeme;
         this.isError = false;
         this.errorMessage = null;
     }
-    
+
     public Token(String errorMessage) {
         this.type = "ERROR";
         this.lexeme = "";
         this.isError = true;
         this.errorMessage = errorMessage;
     }
-    
-    public boolean isError() { return isError; }
-    public String getErrorMessage() { return errorMessage; }
-    public String getType(){ return type; }
-    public String getLexeme(){ return lexeme; }
-    
+
+    public boolean isError() {
+        return isError;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public String getLexeme() {
+        return lexeme;
+    }
+
     @Override
-    public String toString(){
-        if (isError) return "(ERROR: " + errorMessage + ")";
+    public String toString() {
+        if (isError) {
+            return "(ERROR: " + errorMessage + ")";
+        }
         return "(" + type + ", " + lexeme + ")";
     }
 }
@@ -942,20 +1032,22 @@ class Token{
 /**
  * Reserved-token lookup table.
  *
- * <p>Maps fixed pseudocode lexemes to their token kinds. This is separate from
+ * <p>
+ * Maps fixed pseudocode lexemes to their token kinds. This is separate from
  * {@link SymbolTable}, which stores only user-defined identifiers.
  */
-class TokenHashMap{
+class TokenHashMap {
+
     //Stores lexeme-to-token mappings for all reserved/static tokens.
     private final HashMap<String, String> table;
-    
-    public TokenHashMap(){
+
+    public TokenHashMap() {
         table = new HashMap<>();
         initialize();
     }
-    
+
     //Populates the hashmap with all predefined language tokens.
-    private void initialize(){
+    private void initialize() {
         table.put("Program", "TK_PROG");
         table.put("End.", "TK_END");
         table.put("Declaration_Section", "TK_DECSEC");
@@ -1027,15 +1119,15 @@ class TokenHashMap{
         table.put("--", "TK_COMMENT_SINGLE");
         table.put("---", "TK_COMMENT_MULTI");
     }
-    
+
     //Returns token type for a lexeme, or null if the lexeme is not reserved.
-    public String lookup(String lexeme){
+    public String lookup(String lexeme) {
         if (table.containsKey(lexeme)) {
             return table.get(lexeme);
         }
         return null;
     }
-    
+
     //Checks whether a lexeme exists in the predefined token hashmap.
     public boolean contains(String lexeme) {
         return table.containsKey(lexeme);
