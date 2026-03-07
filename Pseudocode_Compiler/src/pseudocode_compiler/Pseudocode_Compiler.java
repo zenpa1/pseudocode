@@ -751,6 +751,12 @@ class Scanner {
                     case '\\':
                         string.append('\\');  // \\ → \
                         break;
+                    case 'n':
+                        string.append('\n');  // \n → newline
+                        break;
+                    case 't':
+                        string.append('\t');  // \t → tab
+                        break;
                     default:
                         // unrecognized escape sequence → error
                         return errorAt("Invalid escape sequence: \\" + current + " at line " + currentLine, currentPosition);
