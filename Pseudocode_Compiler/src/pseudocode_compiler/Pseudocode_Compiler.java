@@ -759,8 +759,7 @@ class Scanner {
                         break;
                     default:
                         //unrecognized escape sequence -> error
-                        Token escapeError = errorAt("Invalid escape sequence: \\" + current
-                                + " at line " + currentLine, currentPosition);
+                        Token escapeError = errorAt("Invalid escape sequence: \\" + current, currentPosition);
                         
                         //keep consuming the rest of the string first
                         ch = readChar();
