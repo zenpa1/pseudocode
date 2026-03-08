@@ -758,8 +758,29 @@ class Scanner {
                         string.append('\t');  // \t → tab
                         break;
                     default:
-                        // unrecognized escape sequence → error
-                        return errorAt("Invalid escape sequence: \\" + current + " at line " + currentLine, currentPosition);
+                        //unrecognized escape sequence -> error
+                        Token escapeError = errorAt("Invalid escape sequence: \\" + current
+                                + " at line " + currentLine, currentPosition);
+                        
+                        //keep consuming the rest of the string first
+                        ch = readChar();
+                        current = (char) ch;
+                        while (current != '"' && current != '\n' && ch != -1) {
+                            if (current == '\\') {
+                                ch = readChar(); //consume the escaped char too
+                                current = (char) ch;
+                            }
+                            ch = readChar();
+                            current = (char) ch;
+                        }
+
+                        //consume the closing quote if present
+                        if (current == '"') {
+                            ch = readChar();
+                        }
+                        
+                        //returns error
+                        return escapeError;
                 }
             } else {
                 string.append(current); // normal character
