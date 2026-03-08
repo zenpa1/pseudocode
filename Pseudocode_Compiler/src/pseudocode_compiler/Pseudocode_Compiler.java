@@ -76,7 +76,7 @@ public class Pseudocode_Compiler {
             }
 
             if (token.isError()) {
-                System.out.print("[" + "Error: " + token.getErrorMessage() + "]" + "\n");
+                System.out.print("[" + "Error: " + token.getErrorMessage() + "]");
             } else {
                 System.out.print("[" + token.getType() + ", " + token.getLexeme() + "] ");
             }
