@@ -973,12 +973,22 @@ class Scanner {
                     return errorAt("Invalid lexeme " + visibleLexeme(String.valueOf((char) stalledChar)), tokenStartPosition);
                 }
 
+                //Skip noise tokens and continue scanning
+                if (!scannedToken.isError() && isNoiseToken(scannedToken.getType())) {
+                    continue;
+                }
+
                 return scannedToken;
             }
         } catch (IOException e) {
             return errorAtCurrentLocation("I/O error while scanning token: " + e.getMessage());
         }
         return null;
+    }
+
+    //Checks if a token type represents a noise token.
+    private boolean isNoiseToken(String tokenType) {
+        return tokenType.startsWith("NT_");
     }
 }
 
