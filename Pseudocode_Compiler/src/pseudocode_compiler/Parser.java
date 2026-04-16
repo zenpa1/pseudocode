@@ -29,6 +29,21 @@ import java.util.Stack;
  */
 public class Parser {
 
+        private static final List<String> SYNCHRONIZATION_TOKENS = List.of(
+            "TK_DONE",
+            "TK_END_DOT",
+            "TK_END",
+            "TK_UNTIL",
+            "TK_ELSE",
+            "TK_ELSEIF");
+
+        private static final List<String> SYNCHRONIZATION_TABLE_SYMBOLS = List.of(
+            "done",
+            "End.",
+            "until",
+            "else",
+            "else_if");
+
     private final Scanner scanner;
     private final ParsingTable table;
     private Token currentToken;
@@ -123,13 +138,57 @@ public class Parser {
 
                 case NULL:
                 default:
-                    String unexpectedLexeme = currentToken == null ? "$" : currentToken.getLexeme();
-                    //Prefer token-level line number; fallback handles end-of-input cases.
                     int lineNum = currentToken == null ? scanner.getCurrentLine() : currentToken.getLineNum();
-                    throw new RuntimeException(
-                            "Syntax Error at line " + lineNum + ": unexpected token " + unexpectedLexeme);
+                    String unexpectedLexeme = currentToken == null ? "$" : currentToken.getLexeme();
+                    System.err.println("Syntax Error at line " + lineNum + ": unexpected token '" + unexpectedLexeme + "'");
+
+                    if (currentToken == null) {
+                        throw new RuntimeException("Unrecoverable syntax error at line " + lineNum);
+                    }
+
+                    while (true) {
+                        if (stateStack.isEmpty() || semanticStack.isEmpty()) {
+                            throw new RuntimeException("Unrecoverable syntax error at line " + lineNum);
+                        }
+
+                        int recoveryState = stateStack.peek();
+                        if (hasSynchronizationTransition(recoveryState)) {
+                            break;
+                        }
+
+                        stateStack.pop();
+                        semanticStack.pop();
+                    }
+
+                    while (currentToken != null && !isSynchronizationToken(currentToken.getType())) {
+                        currentToken = scanner.getNextToken();
+                    }
+
+                    //If recovery stops on a synchronization token that still has no action,
+                    //consume one token to guarantee forward progress.
+                    if (currentToken != null) {
+                        Action postRecoveryAction = table.getAction(stateStack.peek(), getCurrentTokenType());
+                        if (postRecoveryAction.type == ActionType.NULL) {
+                            currentToken = scanner.getNextToken();
+                        }
+                    }
+                    break;
             }
         }
+    }
+
+    private boolean hasSynchronizationTransition(int state) {
+        for (String synchronizationToken : SYNCHRONIZATION_TABLE_SYMBOLS) {
+            Action action = table.getAction(state, synchronizationToken);
+            if (action.type != ActionType.NULL) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isSynchronizationToken(String tokenType) {
+        return SYNCHRONIZATION_TOKENS.contains(tokenType);
     }
 
     /**
@@ -146,7 +205,46 @@ public class Parser {
             return "ERROR";
         }
 
-        return currentToken.getType();
+        return mapTokenToTableSymbol(currentToken);
+    }
+
+    private String mapTokenToTableSymbol(Token token) {
+        String type = token.getType();
+
+        switch (type) {
+            case "TK_PROG":
+                return "Program";
+            case "TK_DECSEC":
+                return "Declaration_Section";
+            case "TK_STATESEC":
+                return "Statement_Section";
+            case "TK_END":
+                return "End.";
+            case "TK_ID":
+                return "identifier";
+            case "TK_INT_LIT":
+                return "INT_LIT";
+            case "TK_DOUBLE_LIT":
+                return "DOUBLE_LIT";
+            case "TK_STR_LIT":
+                return "STR_LIT";
+            case "TK_TRUE":
+            case "TK_FALSE":
+                return "BOOL_LIT";
+            case "TK_COMMA":
+                return ",";
+            case "TK_LEFT_PAREN":
+                return "(";
+            case "TK_RIGHT_PAREN":
+                return ")";
+            case "TK_LEFT_BRACKET":
+                return "[";
+            case "TK_RIGHT_BRACKET":
+                return "]";
+            default:
+                //Most table terminals are represented by literal keyword lexemes.
+                return token.getLexeme();
+        }
     }
 
     /**
@@ -268,6 +366,15 @@ class Action {
 
 class ParsingTable {
 
+    private static final List<String> DECLARATION_STARTER_SYMBOLS = List.of(
+            "integer",
+            "double",
+            "string",
+            "boolean",
+            "list",
+            "constant",
+            "define");
+
     private final Map<Integer, Map<String, Action>> table = new HashMap<>();
 
     public void putAction(int state, String symbol, Action action) {
@@ -284,6 +391,57 @@ class ParsingTable {
         Action action = row.get(symbol);
         if (action != null) {
             return action;
+        }
+
+        //Workaround for extracted table gap: state 7 should include declaration parsing transitions.
+        if (state == 7 && (DECLARATION_STARTER_SYMBOLS.contains(symbol)
+                || "type".equals(symbol)
+                || "declaration".equals(symbol))) {
+            Map<String, Action> declarationRow = table.get(4);
+            if (declarationRow != null) {
+                Action declarationAction = declarationRow.get(symbol);
+                if (declarationAction != null) {
+                    return declarationAction;
+                }
+            }
+        }
+
+        if (state == 7) {
+            Map<String, Action> declarationRow = table.get(4);
+            if (declarationRow != null) {
+                Action declarationDefaultReduce = declarationRow.get("REDUCE_DEFAULT");
+                if (declarationDefaultReduce != null) {
+                    return declarationDefaultReduce;
+                }
+            }
+        }
+
+        //Some table rows use IDENTIFIER while others use identifier.
+        if ("identifier".equals(symbol)) {
+            Action identifierUppercase = row.get("IDENTIFIER");
+            if (identifierUppercase != null) {
+                return identifierUppercase;
+            }
+        } else if ("IDENTIFIER".equals(symbol)) {
+            Action identifierLowercase = row.get("identifier");
+            if (identifierLowercase != null) {
+                return identifierLowercase;
+            }
+        }
+
+        //Workaround for extracted table gaps: some expression states only keep "expression"
+        //goto but miss closure transitions. Reuse state 34's expression closure entries.
+        if (row.containsKey("expression")) {
+            Map<String, Action> expressionClosureRow = table.get(34);
+            if (expressionClosureRow != null) {
+                Action expressionAction = expressionClosureRow.get(symbol);
+                if (expressionAction == null && "identifier".equals(symbol)) {
+                    expressionAction = expressionClosureRow.get("IDENTIFIER");
+                }
+                if (expressionAction != null) {
+                    return expressionAction;
+                }
+            }
         }
 
         //Table supports explicit reduce-default entries for lookahead-agnostic reductions.
@@ -318,5 +476,11 @@ class ParsingTable {
         }
 
         return parsingTable;
+    }
+
+    public void loadCSV(String csvPath) {
+        ParsingTable loadedTable = fromCsv(csvPath);
+        table.clear();
+        table.putAll(loadedTable.table);
     }
 }

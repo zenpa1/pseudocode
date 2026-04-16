@@ -155,11 +155,16 @@ public enum GrammarRule {
     DIGIT("65", "digit", 1);
 
     private static final Map<String, GrammarRule> BY_RULE_ID = new HashMap<>();
+    private static final Map<String, GrammarRule> RULE_ID_ALIASES = new HashMap<>();
 
     static {
         for (GrammarRule rule : values()) {
             BY_RULE_ID.put(rule.ruleId, rule);
         }
+
+        //Aliases required by the generated parsing_table.csv reduce IDs.
+        RULE_ID_ALIASES.put("4", DECLARATION_TYPE_ID_LIST);
+        RULE_ID_ALIASES.put("60a", ID_LIST_SINGLE);
     }
 
     private final String ruleId;
@@ -185,7 +190,10 @@ public enum GrammarRule {
     }
 
     public static GrammarRule fromRuleId(String ruleId) {
-        GrammarRule rule = BY_RULE_ID.get(ruleId);
+        GrammarRule rule = RULE_ID_ALIASES.get(ruleId);
+        if (rule == null) {
+            rule = BY_RULE_ID.get(ruleId);
+        }
         if (rule == null) {
             throw new RuntimeException("No GrammarRule mapping found for reduce target " + ruleId);
         }

@@ -1,19 +1,13 @@
-Program Grading
-
+Program CF
 Declaration_Section
-integer score
-integer passing
-
+integer count
+boolean ok
 Statement_Section
-set passing to 75
-
-say "Enter your score:"
-read score
-
-if score greater_than passing then
-    say "You passed!"
+set count to 2
+set ok to true
+if count greater_than 0 and ok then
+say "positive"
 else
-    say "You failed."
+say "no"
 done
-
 End.
