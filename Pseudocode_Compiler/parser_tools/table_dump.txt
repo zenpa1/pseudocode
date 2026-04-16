@@ -1,0 +1,2841 @@
+
+1. program ::= Program identifier decl_section stmt_section End.
+
+// ─── Declaration ────────────────────────────────────────────────────────────
+
+2. decl_section  ::= Declaration_Section decl_list
+3. decl_list     ::= declaration decl_list   (3a)
+                  | ε                              (3b)
+4. declaration   ::= type id_list (4a)
+                  | constant type identifier is literal (4b)
+                  | define identifier as type (4c)  // FIX: as quoted as keyword
+
+// ─── Statements ─────────────────────────────────────────────────────────────
+
+5. stmt_section  ::= Statement_Section stmt_list
+
+6. stmt_list     ::= statement stmt_list (6a)
+                  | statement (6b)
+
+// FIX: Removed scope_stmt_list — unified under stmt_list.
+// FIX: Removed separate loop_stmt_list — see loop_item below.
+
+7. statement     ::= action_stmt
+
+8. action_stmt   ::= assignment    (8a)
+                  | io_stmt          (8b)
+                  | conditional      (8c)
+                  | loop             (8d)
+                  | switch           (8e)
+                  | scope_statement  (8f)
+                  | loop_control     (8g)   // FIX: break/continue visible at all nesting levels
+
+8.5 scope_statement ::= scope block stmt_list done
+
+// ─── Assignment ─────────────────────────────────────────────────────────────
+
+9. assignment    ::= set identifier to expression opt_as_type (9a)
+                  | set item expression of identifier to expression (9b)
+
+10. opt_as_type   ::= as type (10a)
+                  | ε (10b)
+
+
+// ─── I/O ────────────────────────────────────────────────────────────────────
+
+11. io_stmt       ::= say expression_list   (11a)
+                  | read id_list            (11b)
+
+12. expression_list ::= expression                          (12a)
+                    | expression , expression_list    (12b)
+
+
+// ─── Conditional ────────────────────────────────────────────────────────────
+
+13. conditional   ::= if expression then stmt_list
+                    else_if_clause else_clause done
+
+14. else_if_clause ::= else_if expression then stmt_list else_if_clause (14a)
+                   | ε (14b)
+
+15. else_clause   ::= else stmt_list (15a)
+                  | ε (15b)
+
+
+// ─── Loops ──────────────────────────────────────────────────────────────────
+
+16. loop          ::= while_loop   (16a)
+                  | for_loop     (16b)
+                  | repeat_loop  (16c)
+
+17. while_loop    ::= while expression do stmt_list done
+18. for_loop      ::= for_every identifier in range_spec do stmt_list done
+19. repeat_loop   ::= repeat stmt_list until expression
+
+// FIX: loop_stmt_list removed; stmt_list is used directly above.
+// loop_control is now a valid action_stmt everywhere, including inside
+// scope_statement blocks nested within loops.
+
+20. range_spec    ::= range expression to expression (20a)
+                  | identifier (20b)
+
+21. loop_control  ::= break (21a)
+                  | continue (21b)
+
+
+// ─── Switch ─────────────────────────────────────────────────────────────────
+
+22. switch        ::= consider expression case_list opt_otherwise done
+23. case_list     ::= case literal then stmt_list case_list (23a)
+                  | ε (23b)
+24. opt_otherwise ::= otherwise stmt_list (24a)
+                  | ε (24b)
+
+
+// ─── Expressions (LALR(1) precedence tower) ──────────────────────────────────
+//
+// FIX: The original grammar had all logical operators as flat alternatives
+// under expression, causing reduce/reduce conflicts. They are now a linear
+// chain of left-recursive rules (lowest → highest precedence).
+
+25. expression      ::= logic_or_expr
+
+26. logic_or_expr   ::= logic_or_expror logic_and_expr (26a) 
+                    | logic_and_expr (26b)
+
+27. logic_and_expr  ::= logic_and_exprand logic_xor_expr (27a) 
+                    | logic_xor_expr (27b)
+
+28. logic_xor_expr  ::= logic_xor_expr xor logic_nand_expr (28a) 
+                    | logic_nand_expr (28b)
+
+// nand / nor: binary only, left-recursive for parsing purposes.
+// Note: enforce non-associativity semantically if desired.
+29. logic_nand_expr ::= logic_nand_expr nand logic_nor_expr (29a)
+                    | logic_nor_expr (29b)
+
+30. logic_nor_expr  ::= logic_nor_expr nor logic_not_expr (30a)
+                    | logic_not_expr (30b)
+
+31. logic_not_expr  ::= not logic_not_expr (31a)
+                    | relational (31b)
+
+
+// ─── Relational ─────────────────────────────────────────────────────────────
+//
+// FIX: Removed the separate special_string alternative (38b).
+// special_string derived identifier, which also derives from
+// arithmetic_expr, making 38a vs 38b ambiguous on a single lookahead token.
+// String vs numeric operand validation moves to semantic analysis.
+
+32. relational    ::= arithmetic_expr rel_op arithmetic_expr   (32a)
+                  | arithmetic_expr                               (32b)
+
+33. rel_op        ::= is (33a) | is_not (33b)
+                  | equal_to (33c) | not_equal_to (33d)
+                  | greater_than (33e) | less_than (33f)
+                  | greater_than_or_equal_to (33g) | less_than_or_equal_to (33h)
+
+
+// ─── Arithmetic ─────────────────────────────────────────────────────────────
+
+34. arithmetic_expr ::= arithmetic_expr add_op term   (34a)
+                    | term                               (34b)
+
+35. add_op  ::= plus (35a) | minus (35b)
+
+36. term    ::= term mult_op power   (36a)
+            | power                    (36b)
+
+37. mult_op ::= times (37a) | divided_by (37b) | modulo (37c)
+
+38. power   ::= primary raised_to power   (38a)   // right-associative
+            | primary                        (38b)
+
+
+// ─── Primary ─────────────────────────────────────────────────────────────────
+//
+// FIX: item access only here. Removed duplicate item_op from
+// special_literal, which created two parse paths for the same syntax.
+
+39. primary ::= ( expression )                     (39a)
+            | identifier                                 (39b)
+            | literal                                    (39c)
+            | item arithmetic_expr of special_list (39d)
+
+
+// ─── Literals ────────────────────────────────────────────────────────────────
+
+40. list_literal  ::= [ list_elements ]
+41. list_elements ::= expression list_tail (41a)
+                  | ε (41b)
+42. list_tail     ::= , expression list_tail (42a)
+                  | ε (42b)
+
+43. literal       ::= list_literal (43a)
+                  | num_literal      (43b)
+                  | string_literal   (43c)
+                  | boolean_literal  (43d)
+                  | special_literal  (43e)
+
+// FIX: item_op removed. item access is handled solely by primary 48d.
+44. special_literal ::= length_op   (44a)
+                    | find_op     	(44b)
+                    | string_op   	(44c)
+
+45. length_op ::= length_of special_string
+46. find_op   ::= find special_string in special_string
+47. string_op ::= join special_string with special_string
+
+48. special_string ::= string_literal   (48a)
+                   | identifier           (48b)
+
+
+// ─── Misc ────────────────────────────────────────────────────────────────────
+
+49. special_list  ::= identifier (49a) | list_literal (49b)
+
+50. id_list       ::= identifier              (50a)
+                  | identifier , id_list    (50b)
+
+51. identifier    ::= letter id_tail
+52. id_tail       ::= letter id_tail
+                  | digit id_tail
+                  | _ id_tail
+                  | ε
+
+
+// ─── Number literals ─────────────────────────────────────────────────────────
+
+53. num_literal     ::= integer_literal   (53a)
+                    | double_literal        (53b)
+54. double_literal  ::= integer_literal . digit_seq
+55. integer_literal ::= digit_seq | - digit_seq
+56. digit_seq       ::= digit digit_seq | digit
+
+
+// ─── String literals ─────────────────────────────────────────────────────────
+
+57. string_literal  ::= '' string_content ''
+58. string_content  ::= string_element string_content | ε
+59. string_element  ::= string_char | escape_seq
+60. escape_seq      ::= \\n | \\t | \\\ | \\\\
+61. string_char     ::= [any printable ASCII except  or \ or newline]
+
+
+// ─── Terminals ───────────────────────────────────────────────────────────────
+
+62. boolean_literal ::= true | false
+63. type    ::= integer | double | string | boolean | list
+64. letter  ::= a … z | A … Z
+65. digit   ::= 0 … 9
+
+
+
+
+
+
+
+
+Green means push, Yellow means reduce.
+DFAs:
+	State 0:
+		[S - .program, $]
+		[program - .Program identifier decl_section stmt_section End., $]
+
+	State 1: GOTO(State 0, program)
+		[S - program., $] //Action: Accept
+
+	State 2: GOTO(State 0, Program)
+		[program - Program.identifierdecl_section stmt_section End., $]
+
+	State 3: GOTO(State 2, identifier)
+		[program - Programidentifier.decl_section stmt_section End., $]
+		[decl_section - .Declaration_Section decl_list, Statement_Section]
+
+	State 4: GOTO(State 3, Declaration_Section)
+		[decl_section - Declaration_Section.decl_list, Statement_Section]
+		[decl_list - .declaration decl_list, Statement_Section]
+		[decl_list - .ε, Statement_Section] Reduce by rule 3b
+		[declaration - .type id_list, { integer, double, string, boolean, list, constant, define, Statement_Section}]
+		[declaration - .constant type IDENTIFIER is literal, {integer, double, string, boolean, list, constant, define, Statement_Section }]
+[declaration - .define IDENTIFIER as type, {integer, double, string, boolean, list, constant, define, Statement_Section}]
+[type - .integer, IDENTIFIER]
+[type - .double, IDENTIFIER]
+[type - .string, IDENTIFIER]
+[type - .boolean, IDENTIFIER]
+[type - .list, IDENTIFIER]
+
+
+State 5: GOTO(State 3, decl_section)
+	[program - Programidentifierdecl_section. stmt_section End., $]
+	[stmt_section - .Statement_Section stmt_list, End.]
+
+State 6: GOTO(State 4, decl_list)
+	[decl_section - Declaration_Sectiondecl_list., Statement_Section] Reduce by rule 2
+
+State 7: GOTO(State 4, declaration)
+    [decl_list - declaration.decl_list, Statement_Section]
+    // closure of decl_list:
+    [decl_list - .declaration decl_list, Statement_Section]
+    [decl_list - .ε, Statement_Section]  → Reduce 3b
+
+DECL_LA={integer,double,string,boolean,list,constant,define,Statement_Section}
+
+    [declaration - .type id_list, DECL_LA] → GOTO State 8
+    [declaration - .constant type IDENTIFIER is literal, DECL_LA]  → GOTO State 9
+    [declaration - .define IDENTIFIER as type, DECL_LA]              → GOTO State 10
+    [type - .integer, IDENTIFIER]  → GOTO State 11
+    [type - .double,  IDENTIFIER]  → GOTO State 12
+    [type - .string,  IDENTIFIER]  → GOTO State 13
+    [type - .boolean, IDENTIFIER]  → GOTO State 14
+    [type - .list,    IDENTIFIER]  → GOTO State 15
+
+
+
+
+State 8: GOTO(State 4, type)
+	[declaration - type.id_list, { integer, double, string, boolean, list, constant, define, Statement_Section}]
+	[id_list - .IDENTIFIER, {integer, double, string, boolean, list, constant, define, Statement_Section}]
+	[id_list - .IDENTIFIER , id_list, {integer, double, string, boolean, list, constant, define, Statement_Section}]
+
+State 9: GOTO(State 4, constant)
+	[declaration - constant.type IDENTIFIER is literal, {integer, double, string, boolean, list, constant, define, Statement_Section }]
+[type - .integer, IDENTIFIER] //GOTO STATE 11
+[type - .double, IDENTIFIER] //GOTO STATE 12
+[type - .string, IDENTIFIER] //GOTO STATE 13
+[type - .boolean, IDENTIFIER] //GOTO STATE 14
+[type - .list, IDENTIFIER] //GOTO STATE 15
+
+State 10: GOTO(State 4, define)
+	[declaration - define .IDENTIFIER as type, {integer, double, string, boolean, list, constant, define, Statement_Section}] 
+	//identifier already tokenized
+
+//TYPE_LA = {integer, double, string, boolean, list, constant, define, Statement_Section} ∪ IDENTIFIER ∪ L_STMT (see state 25 for L_STMT contents)
+
+State 11: GOTO(State 4, integer)
+	[type - integer., TYPE_LA] Reduce by rule 63a(integer)
+
+State 12: GOTO(State 4, double)
+	[type - double., TYPE_LA] Reduce by rule 63b(double)
+
+State 13: GOTO(State 4, string)
+	[type - string., TYPE_LA] Reduce by rule 63c(string)
+
+
+State 14: GOTO(State 4, boolean)
+	[type - boolean., TYPE_LA] Reduce by rule 63d(boolean)
+
+State 15: GOTO(State 4, list)
+	[type - list., TYPE_LA] Reduce by rule 63e(list)
+
+State 16: GOTO(State 5, stmt_section)
+	[program - Programidentifierdecl_section stmt_section .End., $]
+
+State 17: GOTO(State 5, Statement_Section)
+[stmt_section - Statement_Section .stmt_list, {End.}]
+    [stmt_list - .statement stmt_list, {End.}]
+    [stmt_list - .statement, {End.}]
+    
+ 
+ 	L_STMT = {set, say, read, if, while, for_every, repeat, consider, scope, End., break, continue, done}
+    
+    [statement - .action_stmt, L_STMT]
+    [action_stmt - .assignment, L_STMT]
+    [action_stmt - .io_stmt, L_STMT]
+    [action_stmt - .conditional, L_STMT]
+    [action_stmt - .loop, L_STMT]
+    [action_stmt - .switch, L_STMT]
+    [action_stmt - .scope_statement, L_STMT]
+    [assignment - .set identifier to expression opt_as_type, L_STMT]
+    [assignment - .set item expression of identifier to expression, L_STMT]
+    [io_stmt - .say expression_list, L_STMT] /temp marker/
+    [io_stmt - .read id_list, L_STMT]
+    [conditional - .if expression then ... , L_STMT]
+    [loop - .while_loop, L_STMT]
+    [loop - .for_loop, L_STMT]
+    [loop - .repeat_loop, L_STMT]
+    [while_loop - .while expression ... , L_STMT]
+    [for_loop - .for_every identifier ... , L_STMT]
+    [repeat_loop - .repeat stmt_list ... , L_STMT]
+    [switch - .consider expression ... , L_STMT]
+    [scope_statement - .scope block ... , L_STMT]
+[action_stmt - .loop_control, L_STMT]
+[loop_control - .break,    L_STMT]
+[loop_control - .continue, L_STMT]
+
+State 18: GOTO(State 7, decl_list)
+	[decl_list - declaration decl_list., Statement_Section] Reduce by rule 3a
+
+State 19: GOTO(State 8, id_list)
+	[declaration - typeid_list., { integer, double, string, boolean, list, constant, define, Statement_Section}] Reduce by rule 4
+
+State 20: GOTO(State 8, IDENTIFIER)
+	[id_list - IDENTIFIER., {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}] Reduce by rule 60a
+	[id_list - IDENTIFIER. , id_list, {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}]
+
+State 21: GOTO(State 9, type)
+	[declaration - constanttype .IDENTIFIER is literal, {integer, double, string, boolean, list, constant, define, Statement_Section }]
+
+State 22: GOTO(State 10, IDENTIFIER)
+	[declaration - define IDENTIFIER. as type, {integer, double, string, boolean, list, constant, define, Statement_Section}]
+
+State 23: GOTO(State 16, End.)
+	[program - Programidentifierdecl_section stmt_section End.., $] Reduce by rule 1
+
+State 24: GOTO(State 17, stmt_list)
+	[stmt_section - Statement_Section stmt_list., {End.}] Reduce by rule 5
+
+State 25: GOTO(State 17, statement)
+[stmt_list - statement. stmt_list, {End.,until,done,otherwise,case}]
+   	[stmt_list - statement., {End.,until,done,otherwise,case}] Reduce by rule 6b
+	[stmt_list - .statement stmt_list, {End.,until,otherwise,case}] //GOTO STATE 25
+   	[stmt_list - .statement, {End.,until,otherwise,case}] //GOTO STATE 25
+
+	L_STMT = {set, say, read, if, while, for_every, repeat, consider, scope, End., break, continue, until, done, else, else_if, otherwise, case}
+    
+    [statement - .action_stmt, L_STMT] //GOTO STATE 26
+    [action_stmt - .assignment, L_STMT] //GOTO STATE 27
+    [action_stmt - .io_stmt, L_STMT] //GOTO STATE 28
+    [action_stmt - .conditional, L_STMT] //GOTO STATE 29
+    [action_stmt - .loop, L_STMT] //GOTO STATE 30
+    [action_stmt - .switch, L_STMT] //GOTO STATE 31
+    [action_stmt - .scope_statement, L_STMT] //GOTO STATE 32
+    [assignment - .set identifier to expression opt_as_type, L_STMT] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, L_STMT] //GOTO STATE 33
+    [io_stmt - .say expression_list, L_STMT] //GOTO STATE 34
+    [io_stmt - .read id_list, L_STMT] //GOTO STATE 35
+    [conditional - .if expression then ... , L_STMT] //GOTO STATE 36
+    [loop - .while_loop, L_STMT] //GOTO STATE 37
+    [loop - .for_loop, L_STMT] //GOTO STATE 38
+    [loop - .repeat_loop, L_STMT] //GOTO STATE 39
+    [while_loop - .while expression ... , L_STMT] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , L_STMT] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , L_STMT] //GOTO STATE 42
+    [switch - .consider expression ... , L_STMT] //GOTO STATE 43
+    [scope_statement - .scope block ... , L_STMT] //GOTO STATE 44
+[action_stmt - .loop_control, L_STMT] //GOTO STATE 45
+[loop_control - .break,    L_STMT] //GOTO STATE 46
+[loop_control - .continue, L_STMT] //GOTO STATE 47
+
+State 26: GOTO(State 17, action_stmt)
+	[statement - action_stmt., L_STMT] Reduce by rule 7
+
+State 27: GOTO(State 17, assignment)
+	[action_stmt - assignment., L_STMT] Reduce by rule 8a
+State 28: GOTO(State 17, io_stmt)
+	[action_stmt - io_stmt., L_STMT] Reduce by rule 8b
+
+
+State 29: GOTO(State 17, conditional)
+	[action_stmt - conditional., L_STMT] Reduce by rule 8c
+State 30: GOTO(State 17, loop)
+	[action_stmt - loop., L_STMT] Reduce by rule 8d
+
+State 31: GOTO(State 17, switch)
+	[action_stmt - switch., L_STMT] Reduce by rule 8e
+
+State 32: GOTO(State 17, scope_statement)
+	[action_stmt - scope_statement., L_STMT] Reduce by rule 8f
+
+State 33: GOTO(State 17, set)
+	[assignment - set. IDENTIFIER to expression opt_as_type, L_STMT]
+	[assignment - set. item expression of IDENTIFIER to expression, L_STMT]
+
+State 34: GOTO(State 17, say)
+    [io_stmt - say.expression_list, L_STMT]
+    [expression_list - .expression, L_STMT]
+    [expression_list - .expression , expression_list, {L_STMT, ,}]
+
+    // ── Lookahead definitions ──────────────────────────────────────────
+    EXPR_END  = {L_STMT, ,}                          // what can follow an expression
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not,equal_to,not_equal_to,
+                 greater_than,less_than,
+                 greater_than_or_equal_to,less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    // Cascading: each level's LA = its own operators + everything above it
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA  ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA                // raised_to is handled inside power rule
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [expression - .logic_or_expr, EXPR_END]
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END]
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END]
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}]
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}]
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}]
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}]
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}]
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}]
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}]
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}]
+
+    [logic_not_expr - .not logic_not_expr, REL_LA]   // not is prefix, recurses
+    [logic_not_expr - .relational, REL_LA]
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA]
+    [relational - .arithmetic_expr,                             REL_LA]
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA]
+    [arithmetic_expr - .term,                            ARITH_LA]
+
+    [term - .term mult_op power, TERM_LA]
+    [term - .power,                  TERM_LA]
+
+    [power - .primary raised_to power, POWER_LA]
+    [power - .primary,                     POWER_LA]
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA]
+    [primary - .IDENTIFIER,                              PRIMARY_LA]
+    [primary - .literal,                               PRIMARY_LA]
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA]
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA]
+    [literal - .num_literal,    PRIMARY_LA]
+    [literal - .STR_LIT,          PRIMARY_LA]
+    [literal - .BOOL_LIT,         PRIMARY_LA]
+    [literal - .special_literal, PRIMARY_LA]
+
+    [list_literal - .[ list_elements ], PRIMARY_LA]
+    [num_literal  - .INT_LIT,                 PRIMARY_LA]
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA]
+
+    [special_literal - .length_op, PRIMARY_LA]
+    [special_literal - .find_op,   PRIMARY_LA]
+    [special_literal - .string_op, PRIMARY_LA]
+
+    [length_op - .length_of special_string, PRIMARY_LA]
+    [find_op   - .find special_string in special_string, PRIMARY_LA]
+    [string_op - .join special_string with special_string, PRIMARY_LA]
+
+    [special_string - .STR_LIT,    PRIMARY_LA]   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA]
+
+State 35: GOTO(State 17, read)
+    [io_stmt - read .id_list, L_STMT]
+    [id_list - .IDENTIFIER, L_STMT] //GO TO STATE 20
+    [id_list - .IDENTIFIER , id_list, L_STMT] // GO TO STATE 20
+
+State 36: GOTO(State 17, if)
+// Kernel
+    [conditional - if .expression then stmt_list else_if_clause else_clause done, L_STMT]
+
+    // ── Local Lookahead definitions ──
+    EXPR_END  = {then}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not, equal_to, not_equal_to, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 37: GOTO(State 17, while_loop)
+	[loop - while_loop., L_STMT] Reduce by rule 16a
+
+State 38: GOTO(State 17, for_loop)
+	[loop - for_loop., L_STMT] Reduce by rule 16b
+
+State 39: GOTO(State 17, repeat_loop)
+	[loop - .repeat_loop, L_STMT] Reduce by rule 16c
+
+State 40: GOTO(State 17, while)
+	[while_loop - while .expression do stmt_list done, L_STMT]
+
+	// ── Local Lookahead definitions ──
+    EXPR_END  = {do}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not,equal_to,not_equal_to,
+                 greater_than,less_than,
+                 greater_than_or_equal_to,less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    // Cascading
+    REL_LA     = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA   = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA    = ARITH_LA ∪ MULT_OPS
+    POWER_LA   = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+	// ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 41: GOTO(State 17, for_every)
+	[for_loop - for_every. IDENTIFIER in range_spec do stmt_list done, L_STMT]
+
+State 42: GOTO(State 17, repeat)
+	// Kernel
+    [repeat_loop - repeat .stmt_list until expression, L_STMT]
+
+    // ── Statement Closure ──
+    [stmt_list - .statement stmt_list, until] //GOTO STATE 25
+    [stmt_list - .statement, until] //GOTO STATE 25
+    
+    [statement - .action_stmt, until] //GOTO STATE 26
+    
+    [action_stmt - .assignment, until] //GOTO STATE 27
+    [action_stmt - .io_stmt, until] //GOTO STATE 28
+    [action_stmt - .conditional, until] //GOTO STATE 29
+    [action_stmt - .loop, until] //GOTO STATE 30
+    [action_stmt - .switch, until] //GOTO STATE 31
+    [action_stmt - .scope_statement, until] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, until] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, until] //GOTO STATE 33
+    [io_stmt - .say expression_list, until] //GOTO STATE 34
+    [io_stmt - .read id_list, until] //GOTO STATE 35
+    [conditional - .if expression then ... , until] //GOTO STATE 36
+    [loop - .while_loop, until] //GOTO STATE 37
+    [loop - .for_loop, until] //GOTO STATE 38
+    [loop - .repeat_loop, until] //GOTO STATE 39
+    [while_loop - .while expression ... , until] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , until] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , until] //GOTO STATE 42
+    [switch - .consider expression ... , until] //GOTO STATE 43
+    [scope_statement - .scope block ... , until] //GOTO STATE 44
+    [action_stmt - .loop_control, until] //GOTO STATE 45
+    [loop_control - .break, until] //GOTO STATE 46
+    [loop_control - .continue, until] //GOTO STATE 47
+
+State 43: GOTO(State 17, consider)
+	//kernel
+	[switch - consider .expression case_list opt_otherwise done, L_STMT]
+// ── Local Lookahead definitions ──
+    EXPR_END  = {case, otherwise, done}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not, equal_to, not_equal_to, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 44: GOTO(State 17, scope)
+[scope_statement - scope .block ... , L_STMT]
+
+State 45: GOTO(State 17, loop_control)
+	[action_stmt - loop_control., L_STMT] Reduce by rule 8g
+
+State 46: GOTO(State 17, break)
+	[loop_control - break., L_STMT] Reduce by rule 21a
+
+State 47: GOTO(State 17, continue)
+[loop_control - continue., L_STMT]	Reduce by rule 21b
+
+State 48: GOTO(State 20, ,)
+[id_list - IDENTIFIER , .id_list, {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}]
+[id_list - .IDENTIFIER , id_list, {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}] //GOTO STATE 20
+[id_list - .IDENTIFIER, {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}] //GOTO STATE 20
+
+State 49: GOTO(State 21, IDENTIFIER)
+[declaration - constanttype IDENTIFIER .is literal, {integer, double, string, boolean, list, constant, define, Statement_Section }]
+
+State 50: GOTO(State 22,as)
+	[declaration - define IDENTIFIER as .type, {integer, double, string, boolean, list, constant, define, Statement_Section}]
+	[type - .integer, {integer, double, string, boolean, list, constant, define, Statement_Section}] //GOTO STATE 11
+[type - .double, {integer, double, string, boolean, list, constant, define, Statement_Section}] //GOTO STATE 12
+[type - .string, {integer, double, string, boolean, list, constant, define, Statement_Section}] //GOTO STATE 13
+[type - .boolean, {integer, double, string, boolean, list, constant, define, Statement_Section}] //GOTO STATE 14
+[type - .list, {integer, double, string, boolean, list, constant, define, Statement_Section}] //GOTO STATE 15
+
+State 51: GOTO(State 25, stmt_list)
+	[stmt_list - statement stmt_list., {End.}] Reduce by rule 6a
+
+State 52: GOTO(State 33, IDENTIFIER)
+	[assignment - set IDENTIFIER .to expression opt_as_type, L_STMT]
+
+State 53: GOTO(State 33, item)
+	//kernel
+	[assignment - set item .expression of IDENTIFIER to expression, L_STMT]
+
+// ── Local Lookahead definitions ──
+    EXPR_END  = {of}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not, equal_to, not_equal_to, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 54: GOTO(State 34, expression_list)
+	[io_stmt - sayexpression_list., L_STMT] Reduce by rule 11a
+
+State 55: GOTO(State 34, expression)
+	[expression_list - expression., {L_STMT, ,}] Reduce by rule 12a
+    	[expression_list - expression ., expression_list, {L_STMT, ,}]
+
+//FOR EXPR_END IN STATES 56-85 (including in other lookahead identifiers)
+//EXPR_END = {then, do, case, otherwise, done, as, of, L_STMT, ,, ), ], to}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not, equal_to, not_equal_to, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+
+State 56: GOTO(State 34, logic_or_expr)
+	[expression - logic_or_expr., EXPR_END] Reduce by rule 25
+	[logic_or_expr  - logic_or_expr .or logic_and_expr, EXPR_END]
+	
+State 57: GOTO(State 34, logic_and_expr)
+    	[logic_or_expr  - logic_and_expr., EXPR_END] Reduce by rule 26b
+[logic_and_expr - logic_and_expr .and logic_xor_expr, EXPR_END ∪ {or}]
+
+State 58: GOTO(State 34, logic_xor_expr)
+[logic_and_expr - logic_xor_expr., EXPR_END ∪ {or}] Reduce by rule 27b
+[logic_xor_expr - logic_xor_expr .xor logic_nand_expr, EXPR_END ∪ {or,and}]
+
+State 59: GOTO(State 34, logic_nand_expr)
+[logic_xor_expr - logic_nand_expr., EXPR_END ∪ {or,and}] Reduce by rule 28b
+[logic_nand_expr - logic_nand_expr .nand logic_nor_expr, EXPR_END ∪ {or,and,xor}]
+
+State 60: GOTO(State 34, logic_nor_expr)
+    [logic_nand_expr - logic_nor_expr., EXPR_END ∪ {or,and,xor}] Reduce by rule 29b
+[logic_nor_expr - logic_nor_expr .nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}]
+
+State 61: GOTO(State 34, logic_not_expr)
+[logic_nor_expr - logic_not_expr., EXPR_END ∪ {or,and,xor,nand}] Reduce by rule 30b
+
+State 62: GOTO(State 34, not)
+[logic_not_expr - not .logic_not_expr, REL_LA]
+[logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62
+
+State 63: GOTO(State 34, relational)
+   	[logic_not_expr - relational., REL_LA ∪ {then}] Reduce by rule 31b
+
+State 64: GOTO(State 34, arithmetic_expr)
+[relational - arithmetic_expr .rel_op arithmetic_expr, REL_LA]
+[relational - arithmetic_expr., REL_LA] Reduce by rule 32b
+[arithmetic_expr - arithmetic_expr .add_op term, ARITH_LA]
+	
+	//OP_LA = {(, [, IDENTIFIER, INT_LIT, DOUBLE_LIT, STR_LIT, BOOL_LIT, length_of, find, join, item}
+[rel_op - .is, OP_LA]
+[rel_op - .is_not, OP_LA]
+[rel_op - .equal_to, OP_LA]
+[rel_op - .not_equal_to, OP_LA]
+[rel_op - .greater_than, OP_LA]
+[rel_op - .less_than, OP_LA]
+[rel_op - .greater_than_or_equal_to, OP_LA]
+[rel_op - .less_than_or_equal_to, OP_LA]
+[add_op - .plus, OP_LA]
+[add_op - .minus, OP_LA]
+
+State 65: GOTO(State 34, term)
+[arithmetic_expr - term., ARITH_LA] Reduce by rule 34b
+[term - term .mult_op power, TERM_LA]
+[mult_op - .times, OP_LA]
+[mult_op - .divided_by, OP_LA]
+[mult_op - .modulo, OP_la]
+    	
+State 66: GOTO(State 34, power)
+	[term - power., TERM_LA] Reduce by rule 36b
+
+State 67: GOTO(State 34, primary)
+[power - primary .raised_to power, POWER_LA]
+[power - primary., POWER_LA] Reduce by rule 38b
+
+State 68: GOTO(State 34, ()
+	//Kernel
+	[primary - ( .expression ), PRIMARY_LA]
+
+// ── Local Lookahead definitions ──
+    EXPR_END  = {)}
+    LOGIC_OPS = {or,and,xor,nand,nor}
+    REL_OPS   = {is,is_not, equal_to, not_equal_to, greater_than, less_than, greater_than_or_equal_to, less_than_or_equal_to}
+    ADD_OPS   = {plus,minus}
+    MULT_OPS  = {times,divided_by,modulo}
+
+    REL_LA    = EXPR_END ∪ LOGIC_OPS
+    ARITH_LA  = REL_LA   ∪ REL_OPS  ∪ ADD_OPS
+    TERM_LA   = ARITH_LA ∪ MULT_OPS
+    POWER_LA  = TERM_LA
+    PRIMARY_LA = POWER_LA ∪ {raised_to}
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 69: GOTO(State 34, IDENTIFIER)
+	[primary - IDENTIFIER., PRIMARY_LA] Reduce by rule 39b
+	[special_string - IDENTIFIER., PRIMARY_LA ∪ {in, with}] Reduce by rule 48b
+
+State 70: GOTO(State 34, literal)
+	[primary - literal., PRIMARY_LA] Reduce by rule 39c
+
+State 71: GOTO(State 34, item)
+	//Kernel
+	[primary - item .arithmetic_expr of special_list, PRIMARY_LA]
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, of] //GOTO STATE 64
+    [arithmetic_expr - .term, ARITH_LA ∪ of] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA ∪ of] //GOTO STATE 65
+    [term - .power, TERM_LA ∪ of] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA ∪ of] //GOTO STATE 67
+    [power - .primary, POWER_LA ∪ of] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA ∪ of] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA ∪ of] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA ∪ of] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA ∪ of] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA ∪ of] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA ∪ of] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA ∪ of] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA ∪ of] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA ∪ of] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA ∪ of] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA ∪ of] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA ∪ of] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA ∪ of] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA ∪ of] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA ∪ of] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA ∪ of] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA ∪ of] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA ∪ of] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA ∪ of] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA ∪ of] //GOTO STATE 69
+
+//ADDITIONALLY, FOR STATES 72-85, 
+//PRIMARY_LA = PRIMARY_LA ∪ {integer, double, string, boolean, list, constant, define, Statement_Section }
+State 72: GOTO(State 34, list_literal)
+	[literal - list_literal., PRIMARY_LA] Reduce by rule 43a
+
+State 73: GOTO(State 34, num_literal)
+[literal - num_literal., PRIMARY_LA] Reduce by rule 43b
+
+State 74: GOTO(State 34, STR_LIT)
+	[literal - .STR_LIT, PRIMARY_LA] Reduce by rule 43c
+	[special_string - STR_LIT., PRIMARY_LA ∪ {in, with}] Reduce by rule 48a
+
+State 75: GOTO(State 34, BOOL_LIT)
+	[literal - .BOOL_LIT, PRIMARY_LA] Reduce by rule 43d
+    
+State 76: GOTO(State 34, special_literal)    
+[literal - special_literal., PRIMARY_LA] Reduce by rule 43e
+
+State 77: GOTO(State 34, [)
+	[list_literal - [ .list_elements ], PRIMARY_LA]
+	[list_elements - .expression list_tail, ]]
+	[list_elements - .ε, ]] Reduce by rule 41b
+
+    // ── Expression Closure ──
+    // ── Expression hierarchy ───────────────────────────────────────────
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 78: GOTO(State 34, INT_LIT)
+[num_literal  - INT_LIT., PRIMARY_LA] Reduce by rule 53a
+
+State 79: GOTO(State 34, DOUBLE_LIT)
+	[num_literal  - DOUBLE_LIT., PRIMARY_LA] Reduce by rule 53b
+
+State 80: GOTO(State 34, length_op)
+    	[special_literal - length_op., PRIMARY_LA] Reduce by rule 44a
+
+State 81: GOTO(State 34, find_op)
+[special_literal - find_op., PRIMARY_LA] Reduce by rule 44b
+    
+State 82: GOTO(State 34, string_op)
+[special_literal - string_op., PRIMARY_LA] Reduce by rule 44c
+
+State 83: GOTO(State 34, length_of)
+[length_op - length_of .special_string, PRIMARY_LA]
+[special_string - .STR_LIT, PRIMARY_LA] //GOTO STATE 74
+[special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 84: GOTO(State 34, find)
+	[find_op - find .special_string in special_string, PRIMARY_LA]
+	[special_string - .STR_LIT, in] //GOTO STATE 74
+[special_string - .IDENTIFIER, in] //GOTO STATE 69
+
+
+State 85: GOTO(State 34, join)
+[string_op - join .special_string with special_string, PRIMARY_LA]
+[special_string - .STR_LIT, with] //GOTO STATE 74
+[special_string - .IDENTIFIER, with] //GOTO STATE 69
+
+State 86: GOTO(State 35, id_list)
+	[io_stmt - read id_list., L_STMT] Reduce by rule 11b
+
+
+State 87: GOTO(State 36, expression)
+	[conditional - if expression .then stmt_list else_if_clause else_clause done, L_STMT]
+
+State 88: GOTO(State 40, expression)
+	[while_loop - while expression .do stmt_list done, L_STMT]
+
+State 89: GOTO(State 41, IDENTIFIER)
+	[for_loop - for_every IDENTIFIER .in range_spec do stmt_list done, L_STMT]
+
+State 90: GOTO(State 42, stmt_list)
+	[repeat_loop - repeat stmt_list .until expression, L_STMT]
+
+State 91: GOTO(State 43, expression)
+	[switch - consider expression .case_list opt_otherwise done, L_STMT]
+	[case_list - .case literal then stmt_list case_list, {OTHERWISE, done}]
+	[case_list - .ε, {OTHERWISE, done}] Reduce by rule 23b
+
+
+
+State 92: GOTO(State 44, block)
+	//kernel
+	[scope_statement - scope block .stmt_list done, L_STMT]
+
+	[stmt_list - .statement stmt_list, done] //GOTO STATE 25
+	[stmt_list - .statement, done] //GOTO STATE 25
+	[statement - .action_stmt, done] //GOTO STATE 26
+[action_stmt - .assignment, done] //GOTO STATE 27
+[action_stmt - .io_stmt, done] //GOTO STATE 28
+[action_stmt - .conditional, done] //GOTO STATE 29
+[action_stmt - .loop, done] //GOTO STATE 30
+[action_stmt - .switch, done] //GOTO STATE 31
+[action_stmt - .scope_statement, done] //GOTO STATE 32
+    [assignment - .set identifier to expression opt_as_type, done] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, done] //GOTO STATE 33
+    [io_stmt - .say expression_list, done] //GOTO STATE 34
+    [io_stmt - .read id_list, done] //GOTO STATE 35
+    [conditional - .if expression then ... , done] //GOTO STATE 36
+    [loop - .while_loop, done] //GOTO STATE 37
+    [loop - .for_loop, done] //GOTO STATE 38
+    [loop - .repeat_loop, done] //GOTO STATE 39
+    [while_loop - .while expression ... , done] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , done] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , done] //GOTO STATE 42
+    [switch - .consider expression ... , done] //GOTO STATE 43
+    [scope_statement - .scope block ... , done] //GOTO STATE 44
+[action_stmt - .loop_control, done] //GOTO STATE 45
+[loop_control - .break,    done] //GOTO STATE 46
+[loop_control - .continue, done] //GOTO STATE 47
+
+State 93: GOTO(State 48, id_list)
+	[id_list - IDENTIFIER , id_list., {(integer, double, string, boolean, list, constant, define, Statement_Section) ∪ L_STMT}] Reduce by rule 50b
+
+State 94: GOTO(State 49, is)
+	[declaration - constanttype IDENTIFIER is .literal, {integer, double, string, boolean, list, constant, define, Statement_Section }]
+
+	//LIT_LA = {integer, double, string, boolean, list, constant, define, Statement_Section }
+	[literal - .list_literal,   LIT_LA] //GOTO STATE 72
+[literal - .num_literal,    LIT_LA] //GOTO STATE 73
+[literal - .STR_LIT,          LIT_LA] //GOTO STATE 74
+[literal - .BOOL_LIT,         LIT_LA] //GOTO STATE 75
+[literal - .special_literal, LIT_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], LIT_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 LIT_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              LIT_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, LIT_LA] //GOTO STATE 80
+    [special_literal - .find_op,   LIT_LA] //GOTO STATE 81
+    [special_literal - .string_op, LIT_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, LIT_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, LIT_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, LIT_LA] //GOTO STATE 85
+
+State 95: GOTO(State 50, type)
+	[declaration - define IDENTIFIER as type., {integer, double, string, boolean, list, constant, define, Statement_Section}] Reduce by rule 4c
+
+State 96: GOTO(State 52, to)
+	//kernel
+	[assignment - set IDENTIFIER to .expression opt_as_type, L_STMT]
+
+	//EXPR_END = as
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 97: GOTO(State 53, expression)
+	[assignment - set item expression .of IDENTIFIER to expression, L_STMT]
+
+State 98: GOTO(State 55, ,)
+	//kernel
+	[expression_list - expression , .expression_list, {L_STMT, ,}]
+
+	[expression_list - .expression , expression_list, {L_STMT, ,}] //GOTO STATE 55
+	[expression_list - .expression, {L_STMT, ,}] //GOTO STATE 55
+
+
+
+	//EXPR_END = {L_STMT, ,}
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+
+State 99: GOTO(State 56, or)
+	//kernel
+	[logic_or_expr  - logic_or_expr or .logic_and_expr, EXPR_END]
+
+	[logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 100: GOTO(State 57, and)
+	//kernel
+	[logic_and_expr - logic_and_expr and .logic_xor_expr, EXPR_END ∪ {or}]
+
+	[logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 101: GOTO(State 58, xor)
+	//kernel
+	[logic_xor_expr - logic_xor_expr xor .logic_nand_expr, EXPR_END ∪ {or,and}]
+
+	[logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 102: GOTO(State 59, nand)
+	//kernel
+	[logic_nand_expr - logic_nand_expr nand .logic_nor_expr, EXPR_END ∪ {or,and,xor}]
+
+	[logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 103: GOTO(State 60, nor)
+	//kernel
+[logic_nor_expr - logic_nor_expr nor .logic_not_expr, EXPR_END ∪ {or,and,xor,nand}]
+
+[logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 103: GOTO(State 62, logic_not_expr)
+	[logic_not_expr - not logic_not_expr., REL_LA] Reduce by rule 31a
+
+State 104: GOTO(State 64, rel_op)
+	[relational - arithmetic_expr rel_op .arithmetic_expr, REL_LA]
+
+	[arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 105: GOTO(State 64, add_op)
+	[arithmetic_expr - arithmetic_expr add_op .term, ARITH_LA]
+
+	[term - .term mult_op power, ARITH_LA] //GOTO STATE 65
+    [term - .power, ARITH_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, ARITH_LA] //GOTO STATE 67
+    [power - .primary, ARITH_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 106: GOTO(State 64, is)
+	[rel_op - is., OP_LA] Reduce by rule 33a
+
+State 107: GOTO(State 64, is_not)
+	[rel_op - is_not., OP_LA] Reduce by rule 33b
+
+State 108: GOTO(State 64, equal_to)
+	[rel_op - equal_to., OP_LA] Reduce by rule 33c
+
+State 109: GOTO(State 64, not_equal_to)
+	[rel_op - not_equal_to., OP_LA] Reduce by rule 33d
+
+State 110: GOTO(State 64, greater_than)
+	[rel_op - greater_than., OP_LA] Reduce by rule 33e
+
+
+State 111: GOTO(State 64, less_than)
+	[rel_op - less_than., OP_LA] Reduce by rule 33f
+
+State 112: GOTO(State 64, greater_than_or_equal_to)
+	[rel_op - greater_than_or_equal_to., OP_LA] Reduce by rule 33g
+
+State 113: GOTO(State 64, less_than_or_equal_to)
+	[rel_op - less_than_or_equal_to., OP_LA] Reduce by rule 33h
+State 114: GOTO(State 64, plus)
+	[add_op - plus., OP_LA] Reduce by rule 35a
+
+State 115: GOTO(State 64, minus)
+	[add_op - minus., OP_LA] Reduce by rule 35b
+
+State 116: GOTO(State 65, mult_op)
+	//kernel
+	[term - term mult_op .power, TERM_LA]
+
+	[power - .primary raised_to power, TERM_LA] //GOTO STATE 67
+    [power - .primary, TERM_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 117: GOTO(State 65, times)
+	[mult_op - times., OP_LA] Reduce by rule 37a
+
+State 118: GOTO(State 65, divided_by)
+	[mult_op - divided_by., OP_LA] Reduce by rule 37b
+
+
+State 119: GOTO(State 65, modulo)
+	[mult_op - modulo., OP_LA] Reduce by rule 37c
+
+State 120: GOTO(State 67, raised_to)
+	//kernel
+	[power - primary raised_to .power, POWER_LA]
+
+	[power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary, POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 121: GOTO(State 68, expression)
+	[primary - ( expression .), PRIMARY_LA]
+
+State 122: GOTO(State 71, arithmetic_expr)
+	[primary - item arithmetic_expr .of special_list, PRIMARY_LA]
+
+State 123: GOTO(State 77, list_elements)
+	[list_literal - [ list_elements .], PRIMARY_LA]
+
+State 124: GOTO(State 77, expression)
+	[list_elements - expression .list_tail, ]]
+[list_tail - ., expression list_tail, ]]
+[list_tail - .ε, ]] Reduce by rule 42b
+
+State 125: GOTO(State 83, special_string)
+	[length_op - length_of special_string., PRIMARY_LA] Reduce by rule 45
+
+State 126: GOTO(State 84, special_string)
+	[find_op - find special_string .in special_string, PRIMARY_LA]
+
+State 127: GOTO(State 85, special_string)
+	[string_op - join special_string .with special_string, PRIMARY_LA]
+
+State 128: GOTO(State 87, then)
+	[conditional - if expression then .stmt_list else_if_clause else_clause done, L_STMT]
+
+	//STMT_LIST_LA = {else_if, else, done}
+	[stmt_list - .statement stmt_list, STMT_LIST_LA] //GOTO STATE 25
+	[stmt_list - .statement, STMT_LIST_LA] //GOTO STATE 25
+	[statement - .action_stmt, STMT_LIST_LA] //GOTO STATE 26
+[action_stmt - .assignment, STMT_LIST_LA] //GOTO STATE 27
+[action_stmt - .io_stmt, STMT_LIST_LA] //GOTO STATE 28
+[action_stmt - .conditional, STMT_LIST_LA] //GOTO STATE 29
+[action_stmt - .loop, STMT_LIST_LA] //GOTO STATE 30
+[action_stmt - .switch, STMT_LIST_LA] //GOTO STATE 31
+[action_stmt - .scope_statement, STMT_LIST_LA] //GOTO STATE 32
+    [assignment - .set identifier to expression opt_as_type, STMT_LIST_LA] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, STMT_LIST_LA] //GOTO STATE 33
+    [io_stmt - .say expression_list, STMT_LIST_LA] //GOTO STATE 34
+    [io_stmt - .read id_list, STMT_LIST_LA] //GOTO STATE 35
+    [conditional - .if expression then ... , STMT_LIST_LA] //GOTO STATE 36
+    [loop - .while_loop, STMT_LIST_LA] //GOTO STATE 37
+    [loop - .for_loop, STMT_LIST_LA] //GOTO STATE 38
+    [loop - .repeat_loop, STMT_LIST_LA] //GOTO STATE 39
+    [while_loop - .while expression ... , STMT_LIST_LA] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , STMT_LIST_LA] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , STMT_LIST_LA] //GOTO STATE 42
+    [switch - .consider expression ... , STMT_LIST_LA] //GOTO STATE 43
+    [scope_statement - .scope block ... , STMT_LIST_LA] //GOTO STATE 44
+[action_stmt - .loop_control, STMT_LIST_LA] //GOTO STATE 45
+[loop_control - .break,    STMT_LIST_LA] //GOTO STATE 46
+[loop_control - .continue, STMT_LIST_LA] //GOTO STATE 47
+
+
+
+
+State 129: GOTO(State 88, do)
+	[while_loop - while expression do .stmt_list done, L_STMT]
+
+	[stmt_list - .statement stmt_list, done] //GOTO STATE 25
+	[stmt_list - .statement, done] //GOTO STATE 25
+	[statement - .action_stmt, done] //GOTO STATE 26
+[action_stmt - .assignment, done] //GOTO STATE 27
+[action_stmt - .io_stmt, done] //GOTO STATE 28
+[action_stmt - .conditional, done] //GOTO STATE 29
+[action_stmt - .loop, done] //GOTO STATE 30
+[action_stmt - .switch, done] //GOTO STATE 31
+[action_stmt - .scope_statement, done] //GOTO STATE 32
+    [assignment - .set identifier to expression opt_as_type, done] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, done] //GOTO STATE 33
+    [io_stmt - .say expression_list, done] //GOTO STATE 34
+    [io_stmt - .read id_list, done] //GOTO STATE 35
+    [conditional - .if expression then ... , done] //GOTO STATE 36
+    [loop - .while_loop, done] //GOTO STATE 37
+    [loop - .for_loop, done] //GOTO STATE 38
+    [loop - .repeat_loop, done] //GOTO STATE 39
+    [while_loop - .while expression ... , done] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , done] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , done] //GOTO STATE 42
+    [switch - .consider expression ... , done] //GOTO STATE 43
+    [scope_statement - .scope block ... , done] //GOTO STATE 44
+[action_stmt - .loop_control, done] //GOTO STATE 45
+[loop_control - .break,    done] //GOTO STATE 46
+[loop_control - .continue, done] //GOTO STATE 47
+
+State 130: GOTO(State 89, in)
+	[for_loop - for_every IDENTIFIER in .range_spec do stmt_list done, L_STMT]
+	[range_spec - .range expression to expression, do]
+	[range_spec - .IDENTIFIER, do]
+
+State 131: GOTO(State 90, until)
+	//kernel
+	[repeat_loop - repeat stmt_list until .expression, L_STMT]
+
+//EXPR_END = LSTMT
+[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+	
+State 132: GOTO(State 91, case_list)
+	[switch - consider expression case_list .opt_otherwise done, L_STMT]
+	[opt_otherwise - .otherwise stmt_list, done]
+	[opt_otherwise - .ε, done] Reduce by rule 24b
+
+State 133: GOTO(State 91, case)
+	//kernel
+	[case_list - case .literal then stmt_list case_list, {OTHERWISE, done}]
+
+	[literal - .list_literal,   then] //GOTO STATE 72
+    [literal - .num_literal,    then] //GOTO STATE 73
+    [literal - .STR_LIT,          then] //GOTO STATE 74
+    [literal - .BOOL_LIT,         then] //GOTO STATE 75
+    [literal - .special_literal, then] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], then] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 then] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              then] //GOTO STATE 79
+
+    [special_literal - .length_op, then] //GOTO STATE 80
+    [special_literal - .find_op,   then] //GOTO STATE 81
+    [special_literal - .string_op, then] //GOTO STATE 82
+
+    [length_op - .length_of special_string, then] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, then] //GOTO STATE 84
+    [string_op - .join special_string with special_string, then] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    then] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, then] //GOTO STATE 69
+
+State 134: GOTO(State 92, stmt_list)
+	[scope_statement - scope block stmt_list .done, L_STMT]
+
+State 135: GOTO(State 94, literal)
+	[declaration - constanttype IDENTIFIER is .literal, {integer, double, string, boolean, list, constant, define, Statement_Section }] Reduce by rule 4b
+
+State 136: GOTO(State 96, expression)
+	[assignment - set IDENTIFIER to expression .opt_as_type, L_STMT]
+	[opt_as_type - .as type, L_STMT]
+[opt_as_type - .ε, L_STMT] Reduce by rule 10b
+
+State 137: GOTO(State 97, of)
+	[assignment - set item expression of .IDENTIFIER to expression, L_STMT]
+
+State 138: GOTO(State 98, expression_list)
+	[expression_list - expression , expression_list., {L_STMT, ,}] Reduce by rule 12b
+
+State 139: GOTO(State 99, logic_and_expr)
+	[logic_or_expr  - logic_or_expr or logic_and_expr., EXPR_END] Reduce by rule 26a
+
+State 140: GOTO(State 100, logic_xor_expr)
+	[logic_and_expr - logic_and_expr and logic_xor_expr., EXPR_END ∪ {or}] Reduce by rule 27a
+
+State 141: GOTO(State 101, logic_nand_expr)
+	[logic_xor_expr - logic_xor_expr xor logic_nand_expr., EXPR_END ∪ {or,and}] Reduce by rule 28a
+
+State 142: GOTO(State 102, logic_nor_expr)
+	[logic_nand_expr - logic_nand_expr nand logic_nor_expr., EXPR_END ∪ {or,and,xor}] Reduce by rule 29a
+
+State 143: GOTO(State 103, logic_not_expr)
+	[logic_nor_expr - logic_nor_expr nor logic_not_expr., EXPR_END ∪ {or,and,xor,nand}] Reduce by rule 30a
+
+State 144: GOTO(State 104, arithmetic_expr)
+	[relational - arithmetic_expr rel_op arithmetic_expr., REL_LA] Reduce by rule 32a
+
+State 145: GOTO(State 105, term)
+	[arithmetic_expr - arithmetic_expr add_op term., ARITH_LA] Reduce by rule 34a
+
+State 146: GOTO(State 116, power)
+	[term - term mult_op power., TERM_LA] Reduce by rule 36a
+
+State 147: GOTO(State 120, power)
+	[power - primary raised_to power., POWER_LA] Reduce by rule 38a
+
+
+
+State 148: GOTO(State 121, ))
+	[primary - ( expression )., PRIMARY_LA] Reduce by rule 39a
+
+State 149: GOTO(State 122, of)
+	[primary - item arithmetic_expr of .special_list, PRIMARY_LA]
+	[special_list - .IDENTIFIER, PRIMARY_LA]
+	[special_list - .list_literal, PRIMARY_LA]
+	[list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+
+State 150: GOTO(State 123, ])
+	[list_literal - [ list_elements ]., PRIMARY_LA] Reduce by rule 40
+
+State 151: GOTO(State 124, list_tail)
+	[list_elements - expression list_tail., ]] Reduce by rule 41a
+
+State 152: GOTO(State 124, ,)
+	[list_tail - , .expression list_tail, ]]
+
+	//EXPR_END = {], ,}
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 153: GOTO(State 126, in)
+	[find_op - find special_string in .special_string, PRIMARY_LA]
+
+	[special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 154: GOTO(State 127, with)
+	[string_op - join special_string with .special_string, PRIMARY_LA]
+
+	[special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+
+State 155: GOTO(State 128, stmt_list)
+	[conditional - if expression then stmt_list .else_if_clause else_clause done, L_STMT]
+	[else_if_clause - .else_if expression then stmt_list else_if_clause, {else, done}]
+	[else_if_clause - .ε, {else, done}] Reduce by rule 14b
+
+State 156: GOTO(State 129, stmt_list)
+	[while_loop - while expression do stmt_list .done, L_STMT]
+
+State 157: GOTO(State 130, range_spec)
+	[for_loop - for_every IDENTIFIER in range_spec .do stmt_list done, L_STMT]
+
+State 158: GOTO(State 130, expression)
+	//kernel
+	[range_spec - range .expression to expression, do]
+
+	//EXPR_END = to
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 159: GOTO(State 130, IDENTIFIER)
+	[range_spec - IDENTIFIER., do] Reduce by rule 20b
+
+State 160: GOTO(State 131, expression)
+	[repeat_loop - repeat stmt_list until expression., L_STMT] Reduce by rule 19
+
+State 161: GOTO(State 132, opt_otherwise)
+	[switch - consider expression case_list opt_otherwise. done, L_STMT]
+
+State 162: GOTO(State 132, otherwise)
+	[opt_otherwise - otherwise .stmt_list, done]
+
+	// ── Statement Closure ──
+    [stmt_list - .statement stmt_list, done] //GOTO STATE 25
+    [stmt_list - .statement, done] //GOTO STATE 25
+    
+    [statement - .action_stmt, done] //GOTO STATE 26
+    
+    [action_stmt - .assignment, done] //GOTO STATE 27
+    [action_stmt - .io_stmt, done] //GOTO STATE 28
+    [action_stmt - .conditional, done] //GOTO STATE 29
+    [action_stmt - .loop, done] //GOTO STATE 30
+    [action_stmt - .switch, done] //GOTO STATE 31
+    [action_stmt - .scope_statement, done] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, done] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, done] //GOTO STATE 33
+    [io_stmt - .say expression_list, done] //GOTO STATE 34
+    [io_stmt - .read id_list, done] //GOTO STATE 35
+    [conditional - .if expression then ... , done] //GOTO STATE 36
+    [loop - .while_loop, done] //GOTO STATE 37
+    [loop - .for_loop, done] //GOTO STATE 38
+    [loop - .repeat_loop, done] //GOTO STATE 39
+    [while_loop - .while expression ... , done] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , done] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , done] //GOTO STATE 42
+    [switch - .consider expression ... , done] //GOTO STATE 43
+    [scope_statement - .scope block ... , done] //GOTO STATE 44
+    [action_stmt - .loop_control, done] //GOTO STATE 45
+    [loop_control - .break, done] //GOTO STATE 46
+    [loop_control - .continue, done] //GOTO STATE 47
+
+State 163: GOTO(State 133, literal)
+	[case_list - case literal .then stmt_list case_list, {OTHERWISE, done}]
+
+State 164: GOTO(State 134, done)
+	[scope_statement - scope block stmt_list done., L_STMT] Reduce by rule 8.5
+
+State 165: GOTO(State 136, opt_as_type)
+	[assignment - set IDENTIFIER to expression opt_as_type., L_STMT] Reduce by rule 9a
+
+State 166: GOTO(State 136, as)
+	[opt_as_type - as .type, L_STMT]
+	[type - .integer, L_STMT]  → GOTO State 11
+    	[type - .double,  L_STMT]  → GOTO State 12
+    	[type - .string,  L_STMT]  → GOTO State 13
+    	[type - .boolean, L_STMT]  → GOTO State 14
+    	[type - .list,    L_STMT]  → GOTO State 15
+
+State 167: GOTO(State 137, IDENTIFIER)
+	[assignment - set item expression of IDENTIFIER .to expression, L_STMT]
+
+State 168: GOTO(State 149, special_list)
+	[primary - item arithmetic_expr of special_list., PRIMARY_LA] Reduce by rule 39d
+
+State 169: GOTO(State 149, IDENTIFIER)
+	[special_list - IDENTIFIER., PRIMARY_LA] Reduce by rule 49a
+
+State 170: GOTO(State 149, list_literal)
+	[special_list - list_literal., PRIMARY_LA] Reduce by rule 49b
+
+State 171: GOTO(State 152, expression)
+	[list_tail - , expression .list_tail, ]]
+	[list_tail - ., expression list_tail, ]] //GOTO STATE 152
+[list_tail - .ε, ]] Reduce by rule 42b
+
+State 172: GOTO(State 153, special_string)
+	[find_op - find special_string in special_string., PRIMARY_LA] Reduce by rule 46
+
+State 173: GOTO(State 154, special_string)
+	[string_op - join special_string with special_string., PRIMARY_LA] Reduce by rule 47
+
+State 174: GOTO(State 155, else_if_clause)
+	[conditional - if expression then stmt_list else_if_clause .else_clause done, L_STMT]
+	[else_clause - .else stmt_list, done]
+	[else_clause - .ε, done] Reduce by rule 15b
+
+State 175: GOTO(State 155,else_if)
+	//kernel
+	[else_if_clause - else_if .expression then stmt_list else_if_clause, {else, done}]
+
+	//EXPR_END = then
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 176: GOTO(State 156, done)
+	[while_loop - while expression do stmt_list done., L_STMT] Reduce by rule 17
+
+State 177: GOTO(State 157, do)
+	//kernel
+	[for_loop - for_every IDENTIFIER in range_spec do .stmt_list done, L_STMT]
+
+	// ── Statement Closure ──
+    [stmt_list - .statement stmt_list, done] //GOTO STATE 25
+    [stmt_list - .statement, done] //GOTO STATE 25
+    
+    [statement - .action_stmt, done] //GOTO STATE 26
+    
+    [action_stmt - .assignment, done] //GOTO STATE 27
+    [action_stmt - .io_stmt, done] //GOTO STATE 28
+    [action_stmt - .conditional, done] //GOTO STATE 29
+    [action_stmt - .loop, done] //GOTO STATE 30
+    [action_stmt - .switch, done] //GOTO STATE 31
+    [action_stmt - .scope_statement, done] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, done] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, done] //GOTO STATE 33
+    [io_stmt - .say expression_list, done] //GOTO STATE 34
+    [io_stmt - .read id_list, done] //GOTO STATE 35
+    [conditional - .if expression then ... , done] //GOTO STATE 36
+    [loop - .while_loop, done] //GOTO STATE 37
+    [loop - .for_loop, done] //GOTO STATE 38
+    [loop - .repeat_loop, done] //GOTO STATE 39
+    [while_loop - .while expression ... , done] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , done] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , done] //GOTO STATE 42
+    [switch - .consider expression ... , done] //GOTO STATE 43
+    [scope_statement - .scope block ... , done] //GOTO STATE 44
+    [action_stmt - .loop_control, done] //GOTO STATE 45
+    [loop_control - .break, done] //GOTO STATE 46
+    [loop_control - .continue, done] //GOTO STATE 47
+
+State 178: GOTO(State 158, expression)
+	[range_spec - range expression .to expression, do]
+
+State 179: GOTO(State 161, done)
+	[switch - consider expression case_list opt_otherwise done., L_STMT] Reduce by rule 22
+
+State 180: GOTO(State 162, stmt_list)
+	[opt_otherwise - otherwise stmt_list., done] Reduce by rule 24a
+
+State 181: GOTO(State 163, then)
+	//kernel
+	[case_list - case literal then .stmt_list case_list, {otherwise, done}]
+
+	// ── Statement Closure ──
+    [stmt_list - .statement stmt_list, {otherwise, done, case}] //GOTO STATE 25
+    [stmt_list - .statement, {otherwise, done, case}] //GOTO STATE 25
+    
+    [statement - .action_stmt, {otherwise, done, case}] //GOTO STATE 26
+    
+    [action_stmt - .assignment, {otherwise, done, case}] //GOTO STATE 27
+    [action_stmt - .io_stmt, {otherwise, done, case}] //GOTO STATE 28
+    [action_stmt - .conditional, {otherwise, done, case}] //GOTO STATE 29
+    [action_stmt - .loop, {otherwise, done, case}] //GOTO STATE 30
+    [action_stmt - .switch, {otherwise, done, case}] //GOTO STATE 31
+    [action_stmt - .scope_statement, {otherwise, done, case}] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, {otherwise, done, case}] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, {otherwise, done, case}] //GOTO STATE 33
+    [io_stmt - .say expression_list, {otherwise, done, case}] //GOTO STATE 34
+    [io_stmt - .read id_list, {otherwise, done, case}] //GOTO STATE 35
+    [conditional - .if expression then ... , {otherwise, done, case}] //GOTO STATE 36
+    [loop - .while_loop, {otherwise, done, case}] //GOTO STATE 37
+    [loop - .for_loop, {otherwise, done, case}] //GOTO STATE 38
+    [loop - .repeat_loop, {otherwise, done, case}] //GOTO STATE 39
+    [while_loop - .while expression ... , {otherwise, done, case}] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , {otherwise, done, case}] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , {otherwise, done, case}] //GOTO STATE 42
+    [switch - .consider expression ... , {otherwise, done, case}] //GOTO STATE 43
+    [scope_statement - .scope block ... , {otherwise, done, case}] //GOTO STATE 44
+    [action_stmt - .loop_control, {otherwise, done, case}] //GOTO STATE 45
+    [loop_control - .break, {otherwise, done, case}] //GOTO STATE 46
+    [loop_control - .continue, {otherwise, done, case}] //GOTO STATE 47
+
+State 182: GOTO(State 166, type)
+	[opt_as_type - as type., L_STMT] Reduce by rule 10a
+
+State 183: GOTO(State 167, to)
+	//kernel
+	[assignment - set item expression of IDENTIFIER to .expression, L_STMT]
+
+	//EXPR_END = L_STMT
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 184: GOTO(State 171, list_tail)
+	[list_tail - , expression list_tail., ]] Reduce by rule 42a
+
+State 185: GOTO(State 174, else_clause)
+	[conditional - if expression then stmt_list else_if_clause else_clause .done, L_STMT]
+
+State 186: GOTO(State 174, else)
+	//kernel
+	[else_clause - else .stmt_list, done]
+
+	// ── Statement Closure ──
+    [stmt_list - .statement stmt_list, done] //GOTO STATE 25
+    [stmt_list - .statement, done] //GOTO STATE 25
+    
+    [statement - .action_stmt, done] //GOTO STATE 26
+    
+    [action_stmt - .assignment, done] //GOTO STATE 27
+    [action_stmt - .io_stmt, done] //GOTO STATE 28
+    [action_stmt - .conditional, done] //GOTO STATE 29
+    [action_stmt - .loop, done] //GOTO STATE 30
+    [action_stmt - .switch, done] //GOTO STATE 31
+    [action_stmt - .scope_statement, done] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, done] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, done] //GOTO STATE 33
+    [io_stmt - .say expression_list, done] //GOTO STATE 34
+    [io_stmt - .read id_list, done] //GOTO STATE 35
+    [conditional - .if expression then ... , done] //GOTO STATE 36
+    [loop - .while_loop, done] //GOTO STATE 37
+    [loop - .for_loop, done] //GOTO STATE 38
+    [loop - .repeat_loop, done] //GOTO STATE 39
+    [while_loop - .while expression ... , done] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , done] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , done] //GOTO STATE 42
+    [switch - .consider expression ... , done] //GOTO STATE 43
+    [scope_statement - .scope block ... , done] //GOTO STATE 44
+    [action_stmt - .loop_control, done] //GOTO STATE 45
+    [loop_control - .break, done] //GOTO STATE 46
+    [loop_control - .continue, done] //GOTO STATE 47
+
+State 187: GOTO(State 175, expression)
+	[else_if_clause - else_if expression .then stmt_list else_if_clause, {else, done}]
+
+State 188: GOTO(State 177, stmt_list)
+	[for_loop - for_every IDENTIFIER in range_spec do stmt_list .done, L_STMT]
+
+
+State 189: GOTO(State 178, to)
+	//kernel
+	[range_spec - range expression to .expression, do]
+
+	//EXPR_END = do
+	[expression - .logic_or_expr, EXPR_END] //GOTO STATE 56
+
+    [logic_or_expr  - .logic_or_expr or logic_and_expr,  EXPR_END] //GOTO STATE 56
+    [logic_or_expr  - .logic_and_expr,                        EXPR_END] //GOTO STATE 57
+
+    [logic_and_expr - .logic_and_expr and logic_xor_expr, EXPR_END ∪ {or}] //GOTO STATE 57
+    [logic_and_expr - .logic_xor_expr,                         EXPR_END ∪ {or}] //GOTO STATE 58
+
+    [logic_xor_expr - .logic_xor_expr xor logic_nand_expr, EXPR_END ∪ {or,and}] //GOTO STATE 58
+    [logic_xor_expr - .logic_nand_expr,                         EXPR_END ∪ {or,and}] //GOTO STATE 59
+
+    [logic_nand_expr - .logic_nand_expr nand logic_nor_expr, EXPR_END ∪ {or,and,xor}] //GOTO STATE 59
+    [logic_nand_expr - .logic_nor_expr,                           EXPR_END ∪ {or,and,xor}] //GOTO STATE 60
+
+    [logic_nor_expr - .logic_nor_expr nor logic_not_expr, EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 60
+    [logic_nor_expr - .logic_not_expr,                         EXPR_END ∪ {or,and,xor,nand}] //GOTO STATE 61
+
+    [logic_not_expr - .not logic_not_expr, REL_LA] //GOTO STATE 62    // not is prefix, recurses 
+    [logic_not_expr - .relational, REL_LA] //GOTO STATE 63
+
+    // ── Relational     
+[relational - .arithmetic_expr rel_op arithmetic_expr, REL_LA] //GOTO STATE 64
+    [relational - .arithmetic_expr,                             REL_LA] //GOTO STATE 64
+
+    // ── Arithmetic ────────────────────────────────────────────────────
+    [arithmetic_expr - .arithmetic_expr add_op term, ARITH_LA] //GOTO STATE 64
+    [arithmetic_expr - .term,                            ARITH_LA] //GOTO STATE 65
+
+    [term - .term mult_op power, TERM_LA] //GOTO STATE 65
+    [term - .power,                  TERM_LA] //GOTO STATE 66
+
+    [power - .primary raised_to power, POWER_LA] //GOTO STATE 67
+    [power - .primary,                     POWER_LA] //GOTO STATE 67
+
+    // ── Primary ───────────────────────────────────────────────────────
+    [primary - .( expression ),                    PRIMARY_LA] //GOTO STATE 68
+    [primary - .IDENTIFIER,                              PRIMARY_LA] //GOTO STATE 69
+    [primary - .literal,                               PRIMARY_LA] //GOTO STATE 70
+    [primary - .item arithmetic_expr of special_list, PRIMARY_LA] //GOTO STATE 71
+
+    // ── Literals (FIXED: item_op removed from special_literal) ──────
+    [literal - .list_literal,   PRIMARY_LA] //GOTO STATE 72
+    [literal - .num_literal,    PRIMARY_LA] //GOTO STATE 73
+    [literal - .STR_LIT,          PRIMARY_LA] //GOTO STATE 74
+    [literal - .BOOL_LIT,         PRIMARY_LA] //GOTO STATE 75
+    [literal - .special_literal, PRIMARY_LA] //GOTO STATE 76
+
+    [list_literal - .[ list_elements ], PRIMARY_LA] //GOTO STATE 77
+    [num_literal  - .INT_LIT,                 PRIMARY_LA] //GOTO STATE 78
+    [num_literal  - .DOUBLE_LIT,              PRIMARY_LA] //GOTO STATE 79
+
+    [special_literal - .length_op, PRIMARY_LA] //GOTO STATE 80
+    [special_literal - .find_op,   PRIMARY_LA] //GOTO STATE 81
+    [special_literal - .string_op, PRIMARY_LA] //GOTO STATE 82
+
+    [length_op - .length_of special_string, PRIMARY_LA] //GOTO STATE 83
+    [find_op   - .find special_string in special_string, PRIMARY_LA] //GOTO STATE 84
+    [string_op - .join special_string with special_string, PRIMARY_LA] //GOTO STATE 85
+
+    [special_string - .STR_LIT,    PRIMARY_LA] //GOTO STATE 74   // used by length_of/find/join only
+    [special_string - .IDENTIFIER, PRIMARY_LA] //GOTO STATE 69
+
+State 190: GOTO(State 181, stmt_list)
+	[case_list - case literal then stmt_list .case_list, {otherwise, done}]
+
+	[case_list - .case literal then stmt_list .case_list, {otherwise, done}] //GOTO STATE 133
+	[case_list - .ε, {otherwise, done}] Reduce by rule 23b
+
+State 191: GOTO(State 183, expression)
+	[assignment - set item expression of IDENTIFIER to expression., L_STMT] Reduce by rule 9b
+
+State 192: GOTO(State 185, done)
+	[conditional - if expression then stmt_list else_if_clause else_clause done., L_STMT] Reduce by rule 13
+
+State 193: GOTO(State 186, stmt_list)
+	[else_clause - else stmt_list., done] Reduce by rule 15a
+
+State 194: GOTO(State 187, then)
+	[else_if_clause - else_if expression then .stmt_list else_if_clause, {else, done}]
+
+	// ── Statement Closure ──
+    [stmt_list - .statement stmt_list, {else_if, else, done}] //GOTO STATE 25
+    [stmt_list - .statement, {else_if, else, done}] //GOTO STATE 25
+    
+    [statement - .action_stmt, {else_if, else, done}] //GOTO STATE 26
+    
+    [action_stmt - .assignment, {else_if, else, done}] //GOTO STATE 27
+    [action_stmt - .io_stmt, {else_if, else, done}] //GOTO STATE 28
+    [action_stmt - .conditional, {else_if, else, done}] //GOTO STATE 29
+    [action_stmt - .loop, {else_if, else, done}] //GOTO STATE 30
+    [action_stmt - .switch, {else_if, else, done}] //GOTO STATE 31
+    [action_stmt - .scope_statement, {else_if, else, done}] //GOTO STATE 32   
+    [assignment - .set identifier to expression opt_as_type, {else_if, else, done}] //GOTO STATE 33
+    [assignment - .set item expression of identifier to expression, {else_if, else, done}] //GOTO STATE 33
+    [io_stmt - .say expression_list, {else_if, else, done}] //GOTO STATE 34
+    [io_stmt - .read id_list, {else_if, else, done}] //GOTO STATE 35
+    [conditional - .if expression then ... , {else_if, else, done}] //GOTO STATE 36
+    [loop - .while_loop, {else_if, else, done}] //GOTO STATE 37
+    [loop - .for_loop, {else_if, else, done}] //GOTO STATE 38
+    [loop - .repeat_loop, {else_if, else, done}] //GOTO STATE 39
+    [while_loop - .while expression ... , {else_if, else, done}] //GOTO STATE 40
+    [for_loop - .for_every identifier ... , {else_if, else, done}] //GOTO STATE 41
+    [repeat_loop - .repeat stmt_list ... , {else_if, else, done}] //GOTO STATE 42
+    [switch - .consider expression ... , {else_if, else, done}] //GOTO STATE 43
+    [scope_statement - .scope block ... , {else_if, else, done}] //GOTO STATE 44
+    [action_stmt - .loop_control, {else_if, else, done}] //GOTO STATE 45
+    [loop_control - .break, {else_if, else, done}] //GOTO STATE 46
+    [loop_control - .continue, {else_if, else, done}] //GOTO STATE 47
+
+State 195: GOTO(State 188, done)
+	[for_loop - for_every IDENTIFIER in range_spec do stmt_list done., L_STMT] Reduce by rule 18
+
+State 196: GOTO(State 189, expression)
+	[range_spec - range expression to expression., do] Reduce by rule 20a
+
+State 197: GOTO(State 190, case_list)
+	[case_list - case literal then stmt_list case_list., {otherwise, done}] Reduce by rule 23a
+
+State 198: GOTO(State 194, stmt_list)
+	[else_if_clause - else_if expression then stmt_list .else_if_clause, {else, done}]
+	[else_if_clause - .else_if expression then stmt_list else_if_clause, {else, done}] //GOTO STATE 175
+	[else_if_clause - .ε, {else, done}] Reduce by rule 14b
+
+State 199: GOTO(State 198, else_if_clause)
+	[else_if_clause - else_if expression then stmt_list else_if_clause., {else, done}] Reduce by rule 15a
