@@ -1,0 +1,21 @@
+# Java build outputs
+**/build/
+**/dist/
+**/out/
+**/*.class
+
+# NetBeans project-private files
+**/nbproject/private/
+
+# Logs and temp artifacts
+*.log
+*.tmp
+*.temp
+
+# IDE/editor folders
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
