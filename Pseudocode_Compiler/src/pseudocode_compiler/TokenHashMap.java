@@ -11,7 +11,7 @@ import java.util.HashMap;
  */
 class TokenHashMap {
 
-    //Stores lexeme-to-token mappings for all reserved/static tokens.
+    // Stores lexeme-to-token mappings for all reserved/static tokens.
     private final HashMap<String, String> table;
 
     public TokenHashMap() {
@@ -19,7 +19,7 @@ class TokenHashMap {
         initialize();
     }
 
-    //Populates the hashmap with all predefined language tokens.
+    // Populates the hashmap with all predefined language tokens.
     private void initialize() {
         table.put("Program", "TK_PROG");
         table.put("End.", "TK_END");
@@ -80,8 +80,6 @@ class TokenHashMap {
         table.put("true", "TK_TRUE");
         table.put("false", "TK_FALSE");
         table.put("the", "NT_THE");
-        table.put("a", "NT_A");
-        table.put("an", "NT_AN");
         table.put("please", "NT_PLEASE");
         table.put("join", "TK_JOIN");
         table.put("with", "TK_WITH");
@@ -93,7 +91,7 @@ class TokenHashMap {
         table.put("---", "TK_COMMENT_MULTI");
     }
 
-    //Returns token type for a lexeme, or null if the lexeme is not reserved.
+    // Returns token type for a lexeme, or null if the lexeme is not reserved.
     public String lookup(String lexeme) {
         if (table.containsKey(lexeme)) {
             return table.get(lexeme);
@@ -101,7 +99,7 @@ class TokenHashMap {
         return null;
     }
 
-    //Checks whether a lexeme exists in the predefined token hashmap.
+    // Checks whether a lexeme exists in the predefined token hashmap.
     public boolean contains(String lexeme) {
         return table.containsKey(lexeme);
     }
