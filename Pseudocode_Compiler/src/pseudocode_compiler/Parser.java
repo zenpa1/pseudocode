@@ -450,6 +450,18 @@ class ParsingTable {
             return commaAction;
         }
 
+        //Custom workaround for detecting expression lists (expressions separated by commas, (i.e. say "hello", name)
+        if ((state == 55) && ",".equals(symbol)) {
+            Action commaAction = new Action(ActionType.SHIFT, "98");
+            return commaAction;
+        }
+        
+        //Custom workaround for detecting multiple list items
+        if ((state == 124 || state == 171) && ",".equals(symbol)) {
+            Action commaAction = new Action(ActionType.SHIFT, "152");
+            return commaAction;
+        }
+
         //Table supports explicit reduce-default entries for lookahead-agnostic reductions.
         Action defaultReduce = row.get("REDUCE_DEFAULT");
         if (defaultReduce != null) {
