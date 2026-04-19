@@ -33,7 +33,10 @@ public class Pseudocode_Compiler {
             runScannerTests();
             return;
         }
-
+        if (args.length > 0 && args[0].equals("--parse")) {
+            parseAndPrintFromFile(new File("program.txt"));
+            return;
+        }
         scanAndPrintFromFile(new File("program.txt"));
     }
 
@@ -337,6 +340,21 @@ public class Pseudocode_Compiler {
             if (testFile != null && testFile.exists()) {
                 testFile.delete();
             }
+        }
+    }
+
+    private static void parseAndPrintFromFile(File programFile) {
+        if (!programFile.exists()) {
+            System.out.println("File does not exist.");
+            System.exit(0);
+        }
+        SymbolTable symbolTable = new SymbolTable();
+        Scanner scanner = new Scanner(programFile, symbolTable);
+        Parser parser = new Parser(scanner);
+        try {
+            parser.parse();
+        } catch (RuntimeException e) {
+            System.out.println("Parse failed: " + e.getMessage());
         }
     }
 }
@@ -1167,5 +1185,927 @@ class TokenHashMap {
     //Checks whether a lexeme exists in the predefined token hashmap.
     public boolean contains(String lexeme) {
         return table.containsKey(lexeme);
+    }
+
+    
+    
+}
+class Parser {
+    private final Scanner scanner;
+    private Token currentToken;
+
+    public Parser(Scanner scanner) {
+        this.scanner = scanner;
+        advance(); // prime the first token
+    }
+
+    private void advance() {
+        currentToken = scanner.getNextToken();
+        // skip past any remaining noise tokens if your scanner doesn't already filter them
+    }
+
+    private boolean check(String type) {
+        return currentToken != null && currentToken.getType().equals(type);
+    }
+
+    private void expect(String type) {
+        if (!check(type)) {
+            throw new RuntimeException(
+                "Parse error: expected [" + type + "] but found [" +
+                (currentToken == null ? "EOF" : currentToken.getType() + 
+                " '" + currentToken.getLexeme() + "'") + "]"
+            );
+        }
+        advance();
+    }
+
+    private void error(String message) {
+        throw new RuntimeException("Syntax error at '" +
+            (currentToken == null ? "EOF" : currentToken.getLexeme()) + "': " + message);
+    }
+
+    private void error() {
+        error("Unexpected token");
+    }
+
+    //<program> ::= "Program" <identifier> <decl_section> <stmt_section> "End."
+    private void parseProgram() {
+        expect("TK_PROG");
+        parseId();
+        parseDeclSection();
+        parseStmtSection();
+        expect("TK_END");
+    }
+
+    // <decl_section> ::= "Declaration_Section" <decl_list>
+    private void parseDeclSection() {
+        expect("TK_DECSEC");
+        parseDeclList();
+    }   
+
+    // <decl_list> ::= <declaration> <decl_list> | ε
+    private void parseDeclList() {
+        if (check("TK_INT") || check("TK_DOUBLE") || check("TK_STRING") || check("TK_LIST") || check("TK_BOOL") || check("TK_ARRAY") || check("TK_CONST") || check("TK_DEFINE")) {
+            parseDecl();
+            parseDeclList();
+        }
+    }
+
+    // <declaration> ::= <type> <id_list>
+    // | "constant" <type> <identifier> "is" <literal>
+    // | "define" <identifier> "as" <type>
+    private void parseDecl() {
+        if (check("TK_CONST")) {
+            expect("TK_CONST");
+            parseType();
+            parseId();
+            expect("TK_IS");
+            parseLiteral();
+        } else if (check("TK_DEFINE")) {
+            expect("TK_DEFINE");
+            parseId();
+            expect("TK_AS");
+            parseType();
+        } else if (check("TK_INT") || check("TK_DOUBLE") || check("TK_STRING") || check("TK_LIST") || check("TK_BOOL") || check("TK_ARRAY")) {
+            parseType();
+            parseIdList();
+        } else {
+            error();
+        }
+    }
+
+    // <stmt_section> ::= "Statement_Section" <stmt_list>
+    private void parseStmtSection(){
+        expect("TK_STATESEC");
+        parseStmtList();
+    }
+
+    // <stmt_list> ::= <statement> <stmt_list> | ε
+    private void parseStmtList(){
+        if (check("NT_THE") || check("NT_A") || check("NT_AN") || check("NT_PLEASE") || check("TK_SET") || check("TK_SAY") || check("TK_READ") || check("TK_IF") || check("TK_WHILE") || check("TK_REPEAT") || check("TK_FOREVERY") || check("TK_CONSIDER") || check("TK_SCOPE") || check("TK_BREAK") || check("TK_CONTINUE")) {
+            parseStmt();
+            parseStmtList();
+        }
+    }
+
+    // <statement> ::= <opt_noise> <action_stmt>
+    private void parseStmt(){
+        parseOptNoise();
+        parseActStmt();
+    }
+    
+    // <opt_noise> ::= <noise> | ε
+    private void parseOptNoise(){
+        if (check("NT_THE") || check("NT_A") || check("NT_AN") || check("NT_PLEASE")) {
+            parseNoise();
+        }
+    }
+
+    // <noise> ::= "the" | "a" | "an" | "please"
+    private void parseNoise(){
+        if (check("NT_THE")) {
+            expect("NT_THE");
+        } else if (check("NT_A")) {
+            expect("NT_A");
+        } else if (check("NT_AN")) {
+            expect("NT_AN");
+        } else if (check("NT_PLEASE")) {
+            expect("NT_PLEASE");
+        } else {
+            error();
+        }
+    }
+
+    // <action_stmt> ::= <assignment>
+    // | <io_stmt>
+    // | <conditional>
+    // | <loop>
+    // | <switch>
+    // | <scope_statement>
+    // | <comment>
+    private void parseActStmt(){
+        if (check("TK_SET")) {
+            parseAss();
+        } else if (check("TK_SAY") || check("TK_READ")) {
+            parseIoStmt();
+        } else if (check("TK_IF")) {
+            parseCond();
+        } else if (check("TK_WHILE") || check("TK_REPEAT") || check("TK_FOREVERY")) {
+            parseLoop();
+        } else if (check("TK_CONSIDER")) {
+            parseSwitch();
+        } else if (check("TK_SCOPE")) {
+            parseScopeStmt();
+        } else if (check("TK_BREAK")) {
+            advance();
+        } else if (check("TK_CONTINUE")) {
+            advance();
+        } else {
+            error();
+        }
+    }
+
+    // <scope_statement> ::= "scope" "block" <stmt_list> "done"
+    private void parseScopeStmt(){
+        expect("TK_SCOPE");
+        expect("TK_BLOCK");
+        parseStmtList();
+        expect("TK_DONE");
+    }
+
+    // <assignment> ::= "set" <identifier> "to" <expression> <opt_typecast>
+    // | "set" "item" <expression> "of" <identifier> "to" <expression>
+    private void parseAss(){
+        expect("TK_SET");
+        if(check("TK_ITEM")){
+            expect("TK_ITEM");
+            parseExpr();
+            expect("TK_OF");
+            parseId();
+            expect("TK_TO");
+            parseExpr();
+        } else if (check("TK_ID")) {
+            parseId();
+            expect("TK_TO");
+            parseExpr();
+            parseOptTypecast();
+        } else {
+            error();
+        }
+    }
+
+    // <opt_typecast> ::= "as" <type> | ε
+    private void parseOptTypecast(){
+        if (check("TK_AS")) {
+            expect("TK_AS");
+            parseType();
+        }
+    }
+    
+    // <io_stmt> ::= "say" <expression_list>
+    // | "read" <id_list>
+    private void parseIoStmt(){
+        if(check("TK_SAY")){
+            expect("TK_SAY");
+            parseExprList();
+        } else if (check("TK_READ")){
+            expect("TK_READ");
+            parseIdList();
+        } else {
+            error();
+        }
+    }
+    
+    // <expression_list> ::= <expression> <expr_list_tail>
+    private void parseExprList(){
+        parseExpr();
+        parseExprListTail();
+    }
+
+    // <expr_list_tail> ::= "," <expression> <expr_list_tail> | ε
+    private void parseExprListTail(){
+        if(check("TK_COMMA")){
+            expect("TK_COMMA");
+            parseExpr();
+            parseExprListTail();
+        }
+    }
+
+    // <conditional> ::= "if" <expression> "then" <stmt_list> <else_if_chain> <else_clause> "done"
+    private void parseCond(){
+        expect("TK_IF");
+        parseExpr();
+        expect("TK_THEN");
+        parseStmtList();
+        parseElseIfChain();
+        parseElseClause();
+        expect("TK_DONE");
+    }
+
+    // <else_if_chain> ::= "else_if" <expression> "then" <stmt_list> <else_if_chain> | ε
+    private void parseElseIfChain(){
+        if(check("TK_ELSEIF")){
+            expect("TK_ELSEIF");
+            parseExpr();
+            expect("TK_THEN");
+            parseStmtList();
+            parseElseIfChain();
+        }
+    }
+
+    // <else_clause> ::= "else" <stmt_list> | ε
+    private void parseElseClause(){
+        if(check("TK_ELSE")){
+            expect("TK_ELSE");
+            parseStmtList();
+        }
+    }
+
+    // <loop> ::= <while_loop> | <for_loop> | <repeat_loop>
+    private void parseLoop(){
+        if(check("TK_WHILE")){
+            parseWhileLoop();
+        } else if (check("TK_FOREVERY")) {
+            parseForLoop();
+        } else if (check("TK_REPEAT")) {
+            parseRepLoop();
+        } else {
+            error();
+        }
+    }
+
+    // <while_loop> ::= "while" <expression> "do" <stmt_list> "done"
+    private void parseWhileLoop(){
+        expect("TK_WHILE");
+        parseExpr();
+        expect("TK_DO");
+        parseStmtList();
+        expect("TK_DONE");
+    }
+
+    // <for_loop> ::= "for_every" <identifier> "in" <range_spec> "do" <stmt_list> "done"
+    private void parseForLoop(){
+        expect("TK_FOREVERY");
+        parseId();
+        expect("TK_IN");
+        parseRangeSpec();
+        expect("TK_DO");
+        parseStmtList();
+        expect("TK_DONE");
+    }
+
+    // <repeat_loop> ::= "repeat" <stmt_list> "until" <expression>
+    private void parseRepLoop(){
+        expect("TK_REPEAT");
+        parseStmtList();
+        expect("TK_UNTIL");
+        parseExpr();
+    }
+
+    // <range_spec> ::= "range" <expression> "to" <expression>
+    // | <identifier>
+    private void parseRangeSpec(){
+        if (check("TK_RANGE")) {
+            expect("TK_RANGE");
+            parseExpr();
+            expect("TK_TO");
+            parseExpr();
+        } else if (check("TK_ID")) {
+            parseId();
+        } else {
+            error();
+        }
+    }
+
+    // <switch> ::= "consider" <expression> <case_list> <opt_otherwise> "done"
+    private void parseSwitch(){
+        expect("TK_CONSIDER");
+        parseExpr();
+        parseCaseList();
+        parseOptOther();
+        expect("TK_DONE");
+    }
+
+    // <case_list> ::= "case" <literal> "then" <stmt_list> <case_list> | ε
+    private void parseCaseList(){
+        if (check("TK_CASE")) {
+            expect("TK_CASE");
+            parseLiteral();
+            expect("TK_THEN");
+            parseStmtList();
+            parseCaseList();
+        }
+    }
+    
+    // <opt_otherwise> ::= "otherwise" <stmt_list> | ε
+    private void parseOptOther(){
+        if(check("TK_OTHERWISE")){
+            expect("TK_OTHERWISE");
+            parseStmtList();
+        }
+    }
+
+    // <expression> ::= <logic_or>
+    private void parseExpr(){
+        parseLogicOr();
+    }
+
+    // <logic_or> ::= <logic_and> <logic_or_tail>
+    private void parseLogicOr() {
+        parseLogicAnd();
+        parseLogicOrTail();
+    }
+
+    // <logic_or_tail> ::= "or" <logic_and> <logic_or_tail> | ε
+    private void parseLogicOrTail(){
+        if(check("TK_OR")){
+            expect("TK_OR");
+            parseLogicAnd();
+            parseLogicOrTail();
+        }
+    }
+
+    // <logic_and> ::= <logic_xor> <logic_and_tail>
+    private void parseLogicAnd(){
+        parseLogicXor();
+        parseLogicAndTail();
+    }
+
+    // <logic_and_tail> ::= "and" <logic_xor> <logic_and_tail> | ε
+    private void parseLogicAndTail(){
+        if(check("TK_AND")){
+            expect("TK_AND");
+            parseLogicXor();
+            parseLogicAndTail();
+        }
+    }
+
+    // <logic_xor> ::= <logic_not> <logic_xor_tail>
+    private void parseLogicXor(){
+        parseNot();
+        parseLogicXorTail();
+    }
+
+    // <logic_xor_tail> ::= "xor" <logic_not> <logic_xor_tail> | ε
+    private void parseLogicXorTail(){
+        if(check("TK_XOR")){
+            expect("TK_XOR");
+            parseNot();
+            parseLogicXorTail();
+        }
+    }
+
+    // <logic_not> ::= "not" <logic_not> | <relational>
+    private void parseNot(){
+        if(check("TK_NOT")){
+            expect("TK_NOT");
+            parseNot();
+        } else {
+            parseRel();
+        }
+    }
+    
+    // <relational> ::= <arithmetic_expr> <rel_tail>
+    private void parseRel(){
+        parseArithExpr();
+        parseRelTail();
+    }
+
+    // <rel_tail> ::= <rel_op> <arithmetic_expr> | ε
+    private void parseRelTail(){
+        if(check("TK_IS") || check("TK_ISNOT") || check("TK_EQTO") || check("TK_NOTEQTO") || check("TK_GREATERTHAN") || check("TK_LESSTHAN") || check("TK_GREATERTHANOREQTO") || check("TK_LESSTHANOREQTO")){
+            parseRelOp();
+            parseArithExpr();
+        }
+    }
+
+    // <rel_op> ::= "is"
+    // | "is_not"
+    // | "equal_to"
+    // | "not_equal_to"
+    // | "greater_than"
+    // | "less_than"
+    // | "greater_than_or_equal_to"
+    // | "less_than_or_equal_to"
+    private void parseRelOp(){
+        if(check("TK_IS")){
+            expect("TK_IS");
+        } else if (check("TK_ISNOT")) {
+            expect("TK_ISNOT");
+        } else if (check("TK_EQTO")) {
+            expect("TK_EQTO");
+        } else if (check("TK_NOTEQTO")) {
+            expect("TK_NOTEQTO");
+        } else if (check("TK_GREATERTHAN")) {
+            expect("TK_GREATERTHAN");
+        } else if (check("TK_LESSTHAN")) {
+            expect("TK_LESSTHAN");
+        } else if (check("TK_GREATERTHANOREQTO")) {
+            expect("TK_GREATERTHANOREQTO");
+        } else if (check("TK_LESSTHANOREQTO")) {
+            expect("TK_LESSTHANOREQTO");
+        } else {
+            error();
+        }
+    }
+
+    // <arithmetic_expr> ::= <term> <arith_tail>
+    private void parseArithExpr(){
+        parseTerm();
+        parseArithTail();
+    }
+
+    // <arith_tail> ::= <add_op> <term> <arith_tail> | ε
+    private void parseArithTail(){
+        if(check("TK_PLUS") || check("TK_MINUS")){
+            parseAddOp();
+            parseTerm();
+            parseArithTail();
+        }
+    }
+
+    // <add_op> ::= "plus" | "minus"
+    private void parseAddOp(){
+        if(check("TK_PLUS")){
+            expect("TK_PLUS");
+        } else if (check("TK_MINUS")) {
+            expect("TK_MINUS");
+        } else {
+            error();
+        }
+    }
+
+    // <term> ::= <power> <term_tail>
+    private void parseTerm(){
+        parsePow();
+        parseTermTail();
+    }
+
+    // <term_tail> ::= <mult_op> <power> <term_tail> | ε
+    private void parseTermTail(){
+        if(check("TK_TIMES") || check("TK_DIV") || check("TK_MOD")){
+            parseMultOp();
+            parsePow();
+            parseTermTail();
+        }
+    }
+
+    // <mult_op> ::= "times" | "divided_by" | "modulo"
+    private void parseMultOp(){
+        if(check("TK_TIMES")){
+            expect("TK_TIMES");
+        } else if (check("TK_DIV")) {
+            expect("TK_DIV");
+        } else if (check("TK_MOD")) {
+            expect("TK_MOD");
+        } else {
+            error();
+        }
+    }
+
+    // <power> ::= <primary> <power_tail>
+    private void parsePow(){
+        parsePrimary();
+        parsePowTail();
+    }
+
+    // <power_tail> ::= "raised_to" <power> | ε
+    private void parsePowTail(){
+        if(check("TK_EXP")){
+            expect("TK_EXP");
+            parsePow();
+        }            
+    }
+    
+    // <primary> ::= "(" <expression> ")"
+    // | <opt_noise> <identifier>
+    // | <literal>
+    // | <opt_noise> "item" <expression> "of" <special_list>
+    private void parsePrimary() {
+        if (check("TK_LEFT_PAREN")) {
+            expect("TK_LEFT_PAREN");
+            parseExpr();
+            expect("TK_RIGHT_PAREN");
+        } else if (isNoiseToken()) {
+            parseOptNoise();
+            if (check("TK_ITEM")) {
+                expect("TK_ITEM");
+                parseExpr();
+                expect("TK_OF");
+                parseSpecList(); 
+            }
+            else { parseId(); }
+        } else if (check("TK_ITEM")) {
+            expect("TK_ITEM");
+            parseExpr();
+            expect("TK_OF");
+            parseSpecList();
+        } else if (check("TK_ID")) {  
+            parseId();
+        } else {                        
+            parseLiteral();
+        }
+    }
+
+    private void parseSpecList() {
+        parseId();
+    }
+    // <literal> ::= <list_literal>
+    // | <num_literal>
+    // | <string_literal>
+    // | <boolean_literal>
+    // | <special_literal>
+    private void parseLiteral(){
+        if(check("TK_LEFT_BRACKET")){
+            parseListLiteral();
+        } else if (check("TK_INT_LIT") || check("TK_DOUBLE_LIT")) {
+            parseNumLit();
+        } else if (check("TK_STR_LIT")) {
+            parseStrLit();
+        } else if (check("TK_TRUE") || check("TK_FALSE")) {
+            parseBoolLit();
+        } else if (check("TK_LENGTHOF") || check("TK_FIND") || check("TK_JOIN") || check("TK_ITEM")) {
+            parseSpecLiteral();
+        } else {
+            error();
+        }
+    }
+
+    // <list_literal> ::= "[" <list_elements> "]"
+    private void parseListLiteral(){
+        expect("TK_LEFT_BRACKET");
+        parseListElem();
+        expect("TK_RIGHT_BRACKET");
+    }
+
+    // <list_elements> ::= <expression> <list_tail> | ε
+    private void parseListElem() {
+        if (check("TK_LEFT_PAREN") || check("NT_THE") || check("NT_A") || check("NT_AN") 
+            || check("NT_PLEASE") || check("TK_ITEM") || check("TK_ID") 
+            || check("TK_LEFT_BRACKET") || check("TK_INT_LIT") || check("TK_DOUBLE_LIT") 
+            || check("TK_STR_LIT") || check("TK_TRUE") || check("TK_FALSE") 
+            || check("TK_LENGTHOF") || check("TK_FIND") || check("TK_JOIN")
+            || check("TK_NOT")) {
+            parseExpr();
+            parseListTail();
+        }
+    }
+
+    // <list_tail> ::= "," <expression> <list_tail> | ε
+    private void parseListTail(){
+        if(check("TK_COMMA")){
+            expect("TK_COMMA");
+            parseExpr();
+            parseListTail();
+        }
+    }
+
+    // <special_literal> ::= <length_op>
+    // | <find_op>
+    // | <string_op>
+    // | <item_op>
+    private void parseSpecLiteral(){
+        if(check("TK_LENGTHOF")){
+            parseLengthOp();
+        } else if (check("TK_FIND")) {
+            parseFindOp();
+        } else if (check("TK_JOIN")) {
+            parseStrOp();
+        } else if (check("TK_ITEM")) {
+            parseItemop();
+        } else {
+            error();
+        }
+    }
+
+    // <length_op> ::= "length_of" <special_string>
+    private void parseLengthOp(){
+        expect("TK_LENGTHOF");
+        parseSpecStr();
+    }
+
+    // <find_op> ::= "find" <special_string> "in" <special_string>
+    private void parseFindOp() {
+        expect("TK_FIND");
+        parseSpecStr();
+        expect("TK_IN");
+        parseSpecStr();
+    }
+
+    // <string_op> ::= "join" <special_string> "with" <special_string>
+    private void parseStrOp(){
+        expect("TK_JOIN");
+        parseSpecStr();
+        expect("TK_WITH");
+        parseSpecStr();
+    }
+
+    // <item_op> ::= "item" <expression> "of" <identifier>
+    private void parseItemop(){
+        expect("TK_ITEM");
+        parseExpr();
+        expect("TK_OF");
+        parseId();
+    }
+
+    // <special_string> ::= <string_literal> | <identifier>
+    private void parseSpecStr(){
+        if (check("TK_STRING_LIT")) {
+            parseStrLit();
+        } else if (check("TK_ID")) {
+            parseId();
+        } else {
+            error();
+        }
+    }
+
+    // <id_list> ::= <identifier> <id_list_tail>
+    private void parseIdList() {
+        parseId();
+        parseIdListTail();
+    }
+
+    // <id_tail_list> ::= "," <identifier> <id_list_tail> | ε
+    private void parseIdListTail(){
+        if(check("TK_COMMA")){
+            expect("TK_COMMA");
+            parseId();
+            parseIdListTail();
+        }
+    }
+
+    // <identifier> ::= <letter> <id_tail>
+    private void parseId() {
+        expect("TK_ID");
+    }
+
+    // <id_tail> ::= <letter> <id_tail>
+    // | <digit> <id_tail>
+    // | "_" <id_tail>
+    // | ε
+    // private void parseIdTail(){
+    //     if(check("TK_LETTER")){
+    //         parseLetter();
+    //         parseIdTail();
+    //     } else if(check("TK_DIGIT")){
+    //         parseDigit();
+    //         parseIdTail();
+    //     } else if(check("TK_UNDERSCORE")){
+    //         parseUnderscore();
+    //         parseIdTail();
+    //     }
+    // }
+
+    // <num_literal> ::= <integer_literal> | <double_literal>
+    private void parseNumLit() {
+        if (check("TK_INT_LIT")) {
+            expect("TK_INT_LIT");
+        } else if (check("TK_DOUBLE_LIT")) {
+            expect("TK_DOUBLE_LIT");
+        } else {
+            error();
+        }
+    }
+
+    // <double_literal> ::= <integer_literal> "." <digit_seq>
+    // private void parseDblLit(){
+    //     parseIntLit();
+    //     expect("TK_DOT");
+    //     parseDigitSeq();
+    // }
+
+    // <integer_literal> ::= <digit_seq> | "-" <digit_seq>
+    // private void parseIntLit(){
+    //     if(check("TK_MINUS")){
+    //         expect("TK_MINUS");
+    //         parseDigitSeq();
+    //     } else if (check("TK_INT")) {
+    //         parseDigitSeq();
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    // <digit_seq> ::= <digit> <digit_seq> | <digit>
+    // private void parseDigitSeq() {
+    //     if (!check("TK_DIGIT")) {
+    //         error("Expected digit");
+    //     }
+
+    //     do {
+    //         parseDigit();
+    //     } while (check("TK_DIGIT"));
+    // }
+
+    // <string_literal> ::= "\"" <string_content> "\""
+    private void parseStrLit() {
+        expect("TK_STR_LIT");
+    }
+
+    // <string_content> ::= <string_char> <string_content> | ε
+    // private void parseStringCont(){
+    //     if(check("TK_STR_CHAR")){
+    //         parseStrChar();
+    //         parseStringCont();
+    //     }
+    // }
+
+    // <boolean_literal> ::= "true" | "false"
+    private void parseBoolLit(){
+        if(check("TK_TRUE")){
+            expect("TK_TRUE");
+        } else if (check("TK_FALSE")) {
+            expect("TK_FALSE");
+        } else {
+            error();
+        }
+    }
+
+    // <comment> ::= <single_line_comment> | <multi_line_comment>
+    // private void parseComm(){
+    //     if(check("TK_COMMENT_SINGLE")){
+    //         parseSingleLineComm();
+    //     } else if (check("TK_COMMENT_MULTI")) {
+    //         parseMultiLineComm();
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    // <single_line_comment> ::= "--" <comment_chars> <newline>
+    // private void parseSingleLineComm(){
+    //     expect("TK_COMMENT_SINGLE");
+    //     parseCommChars();
+    //     parseNewline();
+    // }
+
+    // <multi_line_comment> ::= "---" <comment_chars_multi> "---"
+    // private void parseMultiLineComm(){
+    //     expect("TK_COMMENT_MULTI");            
+    //     parseCommChars();
+    //     expect("TK_COMMENT_MULTI");
+    // }
+
+    // <comment_chars> ::= <comment_char> <comment_chars> | ε
+    // private void parseCommChars(){
+    //     if(check("TK_COMM_CHAR")){
+    //         parseCommChar();
+    //         parseCommChars();
+    //     }
+    // }
+
+    // <comment_char> ::= <letter>
+    //                 | <digit>
+    //                 | " "
+    //                 | "."
+    //                 | ","
+    //                 | ":"
+    //                 | ";"
+    //                 | "!"
+    //                 | "?"
+    // private void parseCommChar(){
+    //     if(check("TK_LETTER")){
+    //         parseLetter();
+    //     } else if (check("TK_DIGIT")) {
+    //         parseDigit();
+    //     } else if (check("TK_SPACE") || check("TK_DOT") || check("TK_COMMA") || check("TK_COLON") || check("TK_SEMICOLON") || check("TK_EXCLAMATION") || check("TK_QUESTION")) {
+    //         advance(); // consume the comment char
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    //<newline> ::= "\n"
+    // private void parseNewline(){
+    //     expect("TK_NEWLINE");
+    // }
+
+    // <type> ::= "integer"
+    //  | "double"
+    //  | "string"
+    //  | "boolean"
+    //  | "list"
+    private void parseType(){
+        if(check("TK_INT")){
+            expect("TK_INT");
+        } else if (check("TK_DOUBLE")) {
+            expect("TK_DOUBLE");
+        } else if (check("TK_STRING")) {
+            expect("TK_STRING");
+        } else if (check("TK_BOOL")) {
+            expect("TK_BOOL");
+        } else if (check("TK_LIST")) {
+            expect("TK_LIST");
+        } else if (check("TK_ARRAY")) {
+            expect("TK_ARRAY");
+        } else {
+            error();
+        }
+    }
+
+    // <string_char> ::= <letter>
+    //         | <digit>
+    //         | " "
+    //         | "."
+    //         | ","
+    //         | ":"
+    //         | ";"
+    //         | "!"
+    //         | "?"
+    //         | "_"
+    //         | "-"
+    //         | "+"
+    //         | "*"
+    //         | "/"
+    //         | "("
+    //         | ")"
+    // private void parseStrChar(){ 
+    //     if(check("TK_LETTER")){
+    //         parseLetter();
+    //     } else if (check("TK_DIGIT")) {
+    //         parseDigit();
+    //     } else if (check("TK_SPACE") || check("TK_DOT") || check("TK_COMMA") || check("TK_COLON") || check("TK_SEMICOLON") || check("TK_EXCLAMATION") || check("TK_QUESTION") || check("TK_UNDERSCORE") || check("TK_MINUS") || check("TK_PLUS") || check("TK_TIMES") || check("TK_DIV") || check("TK_LEFT_PAREN") || check("TK_RIGHT_PAREN")) {
+    //         advance();
+    //     } else {
+    //         error();
+    //     }
+
+    // }
+
+    // <letter> ::= <lowercase_letter> | <uppercase_letter>
+    // private void parseLetter(){
+    //     if(check("TK_LOWER_LETTER")){
+    //         parseLowerCLetter();
+    //     } else if (check("TK_UPPER_LETTER")) {
+    //         parseUpperCLetter();
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    // <lowercase_letter> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g"
+    //                     | "h" | "i" | "j" | "k" | "l" | "m" | "n"
+    //                     | "o" | "p" | "q" | "r" | "s" | "t" | "u"
+    //                     | "v" | "w" | "x" | "y" | "z"
+    // private void parseLowerCLetter(){
+    //     if(check("TK_LOWER_LETTER")){
+    //         expect("TK_LOWER_LETTER");
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    // <uppercase_letter> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G"
+    //                     | "H" | "I" | "J" | "K" | "L" | "M" | "N"
+    //                     | "O" | "P" | "Q" | "R" | "S" | "T" | "U"
+    //                     | "V" | "W" | "X" | "Y" | "Z"
+    // private void parseUpperCLetter(){
+    //     if(check("TK_UPPER_LETTER")){
+    //         expect("TK_UPPER_LETTER");
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    // <digit> ::= "0" | "1" | "2" | "3" | "4"
+    //   | "5" | "6" | "7" | "8" | "9"
+    // private void parseDigit(){
+    //     if(check("TK_DIGIT")){
+    //         expect("TK_DIGIT");
+    //     } else {
+    //         error();
+    //     }
+    // }
+
+    private boolean isNoiseToken() {
+        return check("NT_THE") || check("NT_A") || check("NT_AN") || check("NT_PLEASE");
+    }
+    // Entry point — matches <program>
+    public void parse() {
+        parseProgram();
+        if (currentToken != null) {
+            throw new RuntimeException("Unexpected token after End.: " + currentToken);
+        }
+        System.out.println("Parse successful.");
     }
 }

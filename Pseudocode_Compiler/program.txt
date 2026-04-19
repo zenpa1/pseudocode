@@ -1,19 +1,7 @@
-Program Grading
-
+Program Demo
 Declaration_Section
-integer score
-integer passing
-
+integer value
 Statement_Section
-set passing to 75
-
-say "Enter your score:"
-read score
-
-if score greater_than passing then
-    say "You passed!"
-else
-    say "You failed."
-done
-
+set value to 
+say value
 End.
