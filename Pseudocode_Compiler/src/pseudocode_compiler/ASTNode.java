@@ -46,6 +46,23 @@ public abstract class ASTNode {
     }
 
     public abstract void printTree(String prefix, boolean isTail);
+
+    public abstract String toTreeExpression();
+    
+    protected String getChildrenExpression() {
+        if (children.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < children.size(); i++) {
+            sb.append(children.get(i).toTreeExpression());
+            if (i < children.size() - 1) {
+                sb.append(",");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
+    }
 }
 
 //Root program node.
@@ -64,6 +81,11 @@ class ProgramNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "ProgramNode");
     }
+
+    @Override
+    public String toTreeExpression() {
+        return "[ProgramNode # " + getChildrenExpression() + "]";
+    }
 }
 
 //Container for declarations.
@@ -77,6 +99,11 @@ class DeclSectionNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "DeclSectionNode");
     }
+
+    @Override
+    public String toTreeExpression() {
+        return "[DeclSectionNode # " + getChildrenExpression() + "]";
+    }
 }
 
 //Container for executable statements.
@@ -89,6 +116,11 @@ class StmtSectionNode extends ASTNode {
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "StmtSectionNode");
+    }
+
+    @Override
+    public String toTreeExpression() {
+        return "[StmtSectionNode # " + getChildrenExpression() + "]";
     }
 }
 
@@ -107,6 +139,11 @@ class AssignmentNode extends ASTNode {
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "AssignmentNode");
+    }
+
+    @Override
+    public String toTreeExpression() {
+        return "[AssignmentNode # " + getChildrenExpression() + "]";
     }
 }
 
@@ -127,6 +164,11 @@ class IfNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "IfNode");
     }
+
+    @Override
+    public String toTreeExpression() {
+        return "[IfNode # " + getChildrenExpression() + "]";
+    }
 }
 
 //While-loop statement node.
@@ -144,6 +186,11 @@ class WhileLoopNode extends ASTNode {
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "WhileLoopNode");
+    }
+
+    @Override
+    public String toTreeExpression() {
+        return "[WhileLoopNode # " + getChildrenExpression() + "]";
     }
 }
 
@@ -165,6 +212,11 @@ class ForLoopNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "ForLoopNode");
     }
+
+    @Override
+    public String toTreeExpression() {
+        return "[ForLoopNode # " + getChildrenExpression() + "]";
+    }
 }
 
 //Binary expression node (operator plus left/right children).
@@ -182,6 +234,11 @@ class BinaryExprNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "BinaryExprNode(" + operator + ")");
     }
+
+    @Override
+    public String toTreeExpression() {
+        return "[BinaryExprNode(" + operator + ") # " + getChildrenExpression() + "]";
+    }
 }
 
 //Literal leaf node.
@@ -197,6 +254,12 @@ class LiteralNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "LiteralNode(" + value + ")");
     }
+
+    @Override
+    public String toTreeExpression() {
+        // Leaf nodes still need the '#' and empty '[]' for the grtree parser
+        return "[LiteralNode(" + value + ") # []]"; 
+    }
 }
 
 //Identifier leaf node.
@@ -211,6 +274,12 @@ class IdentifierNode extends ASTNode {
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "IdentifierNode(" + name + ")");
+    }
+
+    @Override
+    public String toTreeExpression() {
+        // Leaf nodes still need the '#' and empty '[]' for the grtree parser
+        return "[IdentifierNode(" + name + ") # []]"; 
     }
 }
 
@@ -229,6 +298,12 @@ class TerminalNode extends ASTNode {
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "TerminalNode(" + tokenType + ", " + lexeme + ")");
     }
+
+    @Override
+    public String toTreeExpression() {
+        // Leaf nodes still need the '#' and empty '[]' for the grtree parser
+        return "[TerminalNode(" + tokenType + ", " + lexeme + ") # []]"; 
+    }
 }
 
 //Generic non-terminal node used when there is no specialized concrete class.
@@ -244,5 +319,11 @@ class NonTerminalNode extends ASTNode {
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "NonTerminalNode(" + lhs + ")");
+    }
+
+    @Override
+    public String toTreeExpression() {
+        // Leaf nodes still need the '#' and empty '[]' for the grtree parser
+        return "[NonTerminalNode(" + lhs + ") # +" + getChildrenExpression() + "]"; 
     }
 }
