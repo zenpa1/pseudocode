@@ -75,15 +75,11 @@ public class Parser {
      * </ol>
      */
     public ASTNode parse() {
-        System.out.println("=== LALR(1) PARSER TRACE ==========================================================");
-        System.out.printf("%-30s | %-20s | %s%n", "STACK", "LOOKAHEAD", "ACTION");
-        System.out.println("-----------------------------------------------------------------------------------");
+        System.out.println("=== LALR(1) PARSER TRACE ==============================================================================");
+        System.out.printf("%-45s | %-20s | %-18s | %s%n", "STACK", "LOOKAHEAD", "ACTION", "DETAILS");
+        System.out.println("-------------------------------------------------------------------------------------------------------");
         while (true) {
             String currentStack = stateStack.toString();
-            //Truncate stack string if it gets too long for the column, keeping the rightmost (top) elements.
-            if (currentStack.length() > 28) {
-                currentStack = "..." + currentStack.substring(currentStack.length() - 25);
-            }
             String lookahead = currentToken == null
                     ? "$ ($)"
                     : currentToken.getType() + " (" + currentToken.getLexeme() + ")";
@@ -96,7 +92,8 @@ public class Parser {
 
             switch (action.type) {
                 case SHIFT:
-                    System.out.printf("%-30s | %-20s | SHIFT to State %s%n", currentStack, lookahead, action.target);
+                    System.out.printf("%-45s | %-20s | SHIFT to State %-3s | Consumed: %s (\"%s\")%n",
+                            currentStack, lookahead, action.target, currentToken.getType(), currentToken.getLexeme());
                     //Move to the target parser state and remember the consumed token.
                     stateStack.push(Integer.parseInt(action.target));
                     //A shifted terminal becomes one AST leaf on the semantic stack.
@@ -109,8 +106,15 @@ public class Parser {
                     //Resolve reduce target (for example "3b") into a concrete grammar rule.
                     GrammarRule rule = GrammarRule.fromRuleId(action.target);
                     int popCount = rule.getPopCount();
-                    String rhs = popCount == 0 ? "eps" : "popped " + popCount;
-                    System.out.printf("%-30s | %-20s | REDUCE by Rule %s: <%s> -> %s%n",
+                    String rhs;
+                    if (popCount == 0) {
+                        rhs = "epsilon";
+                    } else if (popCount == 1) {
+                        rhs = "1 symbol";
+                    } else {
+                        rhs = popCount + " symbols";
+                    }
+                    System.out.printf("%-45s | %-20s | REDUCE by Rule %-3s | Applied:  <%s> -> %s%n",
                             currentStack, lookahead, action.target, rule.getLhs(), rhs);
 
                     //Pop RHS states from the state stack.
@@ -149,7 +153,7 @@ public class Parser {
                     break;
 
                 case ACCEPT:
-                    System.out.printf("%-30s | %-20s | ACCEPT: Syntax Validated%n", currentStack, lookahead);
+                    System.out.printf("%-45s | %-20s | ACCEPT             | Syntax successfully validated!%n", currentStack, lookahead);
                     if (semanticStack.isEmpty()) {
                         throw new RuntimeException("Parser accepted with empty semantic stack.");
                     }
