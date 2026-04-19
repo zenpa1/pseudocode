@@ -302,6 +302,9 @@ class TerminalNode extends ASTNode {
     @Override
     public String toTreeExpression() {
         // Leaf nodes still need the '#' and empty '[]' for the grtree parser
+        if(lexeme.equals("[") || lexeme.equals("]")) 
+            return "[TerminalNode(" + tokenType + ") # []]"; 
+        
         return "[TerminalNode(" + tokenType + ", " + lexeme + ") # []]"; 
     }
 }
