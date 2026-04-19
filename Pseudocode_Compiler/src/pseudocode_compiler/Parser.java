@@ -444,6 +444,12 @@ class ParsingTable {
             }
         }
 
+        //Special code block for multiple identifiers (parser does not read comma otherwise)
+        if (state == 20 && ",".equals(symbol)) {
+            Action commaAction = new Action(ActionType.SHIFT, "48");
+            return commaAction;
+        }
+
         //Table supports explicit reduce-default entries for lookahead-agnostic reductions.
         Action defaultReduce = row.get("REDUCE_DEFAULT");
         if (defaultReduce != null) {
