@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -29,7 +30,7 @@ import java.util.Stack;
  */
 public class Parser {
 
-        private static final List<String> SYNCHRONIZATION_TOKENS = List.of(
+        private static final List<String> SYNCHRONIZATION_TOKENS = Arrays.asList(
             "TK_DONE",
             "TK_END_DOT",
             "TK_END",
@@ -37,7 +38,7 @@ public class Parser {
             "TK_ELSE",
             "TK_ELSEIF");
 
-        private static final List<String> SYNCHRONIZATION_TABLE_SYMBOLS = List.of(
+        private static final List<String> SYNCHRONIZATION_TABLE_SYMBOLS = Arrays.asList(
             "done",
             "End.",
             "until",
@@ -390,7 +391,7 @@ class Action {
 
 class ParsingTable {
 
-    private static final List<String> DECLARATION_STARTER_SYMBOLS = List.of(
+    private static final List<String> DECLARATION_STARTER_SYMBOLS = Arrays.asList(
             "integer",
             "double",
             "string",

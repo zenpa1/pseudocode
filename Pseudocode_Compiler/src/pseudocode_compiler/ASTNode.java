@@ -15,6 +15,9 @@ public abstract class ASTNode {
 
     //Ordered children of this AST node.
     protected final List<ASTNode> children = new ArrayList<>();
+    
+    //Line number in source file for error reporting.
+    protected int lineNumber = -1;
 
     //Adds one child if non-null.
     protected final void addChild(ASTNode child) {
@@ -43,6 +46,24 @@ public abstract class ASTNode {
         for (int i = 0; i < children.size(); i++) {
             children.get(i).printTree(childPrefix, i == children.size() - 1);
         }
+    }
+
+    /**
+     * Gets the line number where this node appears in the source file.
+     *
+     * @return the line number, or -1 if not set
+     */
+    public int getLineNumber() {
+        return lineNumber;
+    }
+
+    /**
+     * Sets the line number for this node.
+     *
+     * @param lineNumber the line number in the source file
+     */
+    public void setLineNumber(int lineNumber) {
+        this.lineNumber = lineNumber;
     }
 
     public abstract void printTree(String prefix, boolean isTail);
@@ -147,6 +168,24 @@ class WhileLoopNode extends ASTNode {
     }
 }
 
+//Repeat-until loop statement node.
+class RepeatUntilNode extends ASTNode {
+
+    public RepeatUntilNode(StmtSectionNode body, ASTNode condition) {
+        addChild(body);
+        addChild(condition);
+    }
+
+    public RepeatUntilNode(List<? extends ASTNode> nodes) {
+        addChildren(nodes);
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "RepeatUntilNode");
+    }
+}
+
 //For-loop statement node.
 class ForLoopNode extends ASTNode {
 
@@ -178,6 +217,10 @@ class BinaryExprNode extends ASTNode {
         addChild(rightExpression);
     }
 
+    public String getOperator() {
+        return operator;
+    }
+
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "BinaryExprNode(" + operator + ")");
@@ -193,6 +236,10 @@ class LiteralNode extends ASTNode {
         this.value = value;
     }
 
+    public String getValue() {
+        return value;
+    }
+
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "LiteralNode(" + value + ")");
@@ -206,6 +253,10 @@ class IdentifierNode extends ASTNode {
 
     public IdentifierNode(String name) {
         this.name = name;
+    }
+
+    public String getName() {
+        return name;
     }
 
     @Override
@@ -225,6 +276,14 @@ class TerminalNode extends ASTNode {
         this.lexeme = lexeme;
     }
 
+    public String getTokenType() {
+        return tokenType;
+    }
+
+    public String getLexeme() {
+        return lexeme;
+    }
+
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "TerminalNode(" + tokenType + ", " + lexeme + ")");
@@ -241,8 +300,131 @@ class NonTerminalNode extends ASTNode {
         addChildren(nodes);
     }
 
+    public String getLhs() {
+        return lhs;
+    }
+
     @Override
     public void printTree(String prefix, boolean isTail) {
         printSelfAndChildren(prefix, isTail, "NonTerminalNode(" + lhs + ")");
+    }
+}
+
+//Say statement node (output/print statement).
+class SayNode extends ASTNode {
+
+    public SayNode(ASTNode expression) {
+        addChild(expression);
+    }
+
+    public SayNode(List<? extends ASTNode> expressions) {
+        addChildren(expressions);
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "SayNode");
+    }
+}
+
+//Read statement node (input/read statement).
+class ReadNode extends ASTNode {
+
+    private final String variableName;
+
+    public ReadNode(String variableName) {
+        this.variableName = variableName;
+    }
+
+    public ReadNode(IdentifierNode identifier) {
+        this.variableName = identifier.getName();
+    }
+
+    public String getVariableName() {
+        return variableName;
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "ReadNode(" + variableName + ")");
+    }
+}
+
+//Break statement node.
+class BreakNode extends ASTNode {
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "BreakNode");
+    }
+}
+
+//Continue statement node.
+class ContinueNode extends ASTNode {
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "ContinueNode");
+    }
+}
+
+//Consider (switch) statement node.
+class ConsiderNode extends ASTNode {
+
+    public ConsiderNode(ASTNode expression, List<? extends ASTNode> cases) {
+        addChild(expression);
+        addChildren(cases);
+    }
+
+    public ConsiderNode(List<? extends ASTNode> nodes) {
+        addChildren(nodes);
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "ConsiderNode");
+    }
+}
+
+//Case statement node (part of consider block).
+class CaseNode extends ASTNode {
+
+    private final Object caseValue;  // The value to match (null for otherwise)
+
+    public CaseNode(Object caseValue, StmtSectionNode body) {
+        this.caseValue = caseValue;
+        addChild(body);
+    }
+
+    public CaseNode(List<? extends ASTNode> nodes) {
+        this.caseValue = null;
+        addChildren(nodes);
+    }
+
+    public Object getCaseValue() {
+        return caseValue;
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        String label = caseValue == null ? "CaseNode(otherwise)" : "CaseNode(" + caseValue + ")";
+        printSelfAndChildren(prefix, isTail, label);
+    }
+}
+
+//Scope block statement node.
+class ScopeBlockNode extends ASTNode {
+
+    public ScopeBlockNode(StmtSectionNode body) {
+        addChild(body);
+    }
+
+    public ScopeBlockNode(List<? extends ASTNode> statements) {
+        addChildren(statements);
+    }
+
+    @Override
+    public void printTree(String prefix, boolean isTail) {
+        printSelfAndChildren(prefix, isTail, "ScopeBlockNode");
     }
 }

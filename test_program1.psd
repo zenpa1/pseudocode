@@ -1,0 +1,11 @@
+Program TestProgram
+Declaration_Section
+integer x
+integer y
+integer sum
+Statement_Section
+set x to 5
+set y to 3
+set sum to x plus y
+say "The sum is: " plus sum
+End.

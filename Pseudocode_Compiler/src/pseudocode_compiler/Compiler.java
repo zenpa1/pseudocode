@@ -29,8 +29,20 @@ import java.util.Map;
 public class Compiler {
 
     public static void main(String[] args) {
-        //This entrypoint behaves as the scanner executable for the current project stage.
-        if (args.length > 0 && args[0].equals("--test")) {
+        // Determine input file and execution mode
+        String inputFile = "program.txt";
+        boolean testMode = false;
+
+        // Parse command-line arguments
+        for (String arg : args) {
+            if (arg.equals("--test")) {
+                testMode = true;
+            } else if (!arg.startsWith("--")) {
+                inputFile = arg;
+            }
+        }
+
+        if (testMode) {
             /*
             Passing --test in the command line will spin up
             temporary files with hardcoded strings to run the given method.
@@ -38,10 +50,76 @@ public class Compiler {
             Feel free to add or modify these programs to build more unit tests.
              */
             runScannerTests();
-            return;
+        } else {
+            // Run full compilation and interpretation pipeline
+            compileAndInterpret(new File(inputFile));
+        }
+    }
+
+    /**
+     * Full compilation and interpretation pipeline.
+     * 1. Scans the source file
+     * 2. Parses the tokens into an AST
+     * 3. Prints the AST tree structure
+     * 4. Interprets the AST
+     * 5. Catches and displays any InterpreterExceptions with line numbers
+     */
+    private static void compileAndInterpret(File programFile) {
+        if (!programFile.exists()) {
+            System.err.println("Error: File does not exist: " + programFile.getAbsolutePath());
+            System.exit(1);
         }
 
-        scanAndPrintFromFile(new File("program.txt"));
+        try {
+            System.out.println("=== COMPILATION PIPELINE ===");
+            System.out.println("Input file: " + programFile.getAbsolutePath());
+            System.out.println();
+
+            // Step 1: Scanner
+            System.out.println("--- SCANNING ---");
+            SymbolTable scannerSymbolTable = new SymbolTable();
+            Scanner scanner = new Scanner(programFile, scannerSymbolTable);
+
+            // Step 2: Parser
+            System.out.println("--- PARSING ---");
+            ParsingTable parsingTable = ParsingTable.fromCsv("../../parser_tools/parsing_table.csv");
+            Parser parser = new Parser(scanner, parsingTable);
+            ASTNode root = parser.parse();
+
+            if (root == null) {
+                System.err.println("Error: Parser failed to produce an AST.");
+                System.exit(1);
+            }
+
+            // Step 3: Print AST
+            System.out.println();
+            System.out.println("--- ABSTRACT SYNTAX TREE ---");
+            root.printTree("", true);
+            System.out.println();
+
+            // Step 4: Interpreter
+            System.out.println("--- INTERPRETATION ---");
+            SymbolTable interpreterSymbolTable = new SymbolTable();
+            Interpreter interpreter = new Interpreter(interpreterSymbolTable);
+
+            try {
+                interpreter.interpret(root);
+                System.out.println();
+                System.out.println("=== EXECUTION COMPLETED SUCCESSFULLY ===");
+            } catch (InterpreterException e) {
+                System.err.println();
+                System.err.println("=== RUNTIME ERROR ===");
+                System.err.println(e.toString());
+                System.exit(1);
+            } finally {
+                interpreter.close();
+            }
+
+        } catch (Exception e) {
+            System.err.println("Fatal error during compilation:");
+            e.printStackTrace();
+            System.exit(1);
+        }
     }
 
     /**
