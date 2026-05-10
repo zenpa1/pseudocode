@@ -76,6 +76,8 @@ public class Parser {
      * </ol>
      */
     public ASTNode parse() {
+        List<String> errors = new ArrayList<>();
+        
         System.out.println("=== LALR(1) PARSER TRACE ==============================================================================");
         System.out.printf("%-45s | %-20s | %-18s | %s%n", "STACK", "LOOKAHEAD", "ACTION", "DETAILS");
         System.out.println("-------------------------------------------------------------------------------------------------------");
@@ -158,14 +160,21 @@ public class Parser {
                     if (semanticStack.isEmpty()) {
                         throw new RuntimeException("Parser accepted with empty semantic stack.");
                     }
+                    for(String c : errors) {
+                        System.out.println(c);
+                    }
                     //The root AST should be the only semantic value that remains.
                     return semanticStack.pop();
 
                 case NULL:
                 default:
                     int lineNum = currentToken == null ? scanner.getCurrentLine() : currentToken.getLineNum();
-                    String unexpectedLexeme = currentToken == null ? "$" : currentToken.getLexeme();
-                    System.err.println("Syntax Error at line " + lineNum + ": unexpected token '" + unexpectedLexeme + "'");
+                    String unexpectedLexeme = currentToken == null ? "$" : 
+                            currentToken.isError() ? currentToken.toString() :
+                            currentToken.getLexeme();
+                    
+                    System.err.println("Syntax Error at line " + lineNum + ": " + unexpectedLexeme);
+                    errors.add("Syntax Error at line " + lineNum + ": unexpected token '" + unexpectedLexeme + "'");
 
                     if (currentToken == null) {
                         throw new RuntimeException("Unrecoverable syntax error at line " + lineNum);
@@ -285,7 +294,7 @@ public class Parser {
      */
     private ASTNode createLeafNode(Token token) {
         if (token == null) {
-            return new TerminalNode("$", "$");
+            return new TerminalNode("$", "$", scanner.getCurrentLine());
         }
 
         if (token.isError()) {
@@ -294,14 +303,14 @@ public class Parser {
 
         String type = token.getType();
         if ("TK_ID".equals(type)) {
-            return new IdentifierNode(token.getLexeme());
+            return new IdentifierNode(token.getLexeme(), scanner.getCurrentLine());
         }
 
         if (type.contains("LIT")) {
-            return new LiteralNode(token.getLexeme());
+            return new LiteralNode(token.getLexeme(), scanner.getCurrentLine());
         }
 
-        return new TerminalNode(type, token.getLexeme());
+        return new TerminalNode(type, token.getLexeme(), scanner.getCurrentLine());
     }
 
     /**
@@ -316,21 +325,21 @@ public class Parser {
     private ASTNode createNodeForLhs(String lhs, List<ASTNode> nodes) {
         switch (lhs) {
             case "program":
-                return new ProgramNode(nodes);
+                return new ProgramNode(nodes, scanner.getCurrentLine());
             case "decl_section":
-                return new DeclSectionNode(nodes);
+                return new DeclSectionNode(nodes, scanner.getCurrentLine());
             case "stmt_section":
-                return new StmtSectionNode(nodes);
+                return new StmtSectionNode(nodes, scanner.getCurrentLine());
             case "assignment":
-                return new AssignmentNode(nodes);
+                return new AssignmentNode(nodes, scanner.getCurrentLine());
             case "conditional":
-                return new IfNode(nodes);
+                return new IfNode(nodes, scanner.getCurrentLine());
             case "while_loop":
-                return new WhileLoopNode(nodes);
+                return new WhileLoopNode(nodes, scanner.getCurrentLine());
             case "for_loop":
-                return new ForLoopNode(nodes);
+                return new ForLoopNode(nodes, scanner.getCurrentLine());
             default:
-                return new NonTerminalNode(lhs, nodes);
+                return new NonTerminalNode(lhs, nodes, scanner.getCurrentLine());
         }
     }
 }

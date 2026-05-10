@@ -16,7 +16,10 @@ public class InterpreterException extends Exception {
      */
     public InterpreterException(String message, ASTNode node) {
         super(message);
-        this.lineNumber = node != null ? node.getLineNumber() : -1;
+        this.lineNumber = node != null ? 
+                (message.contains("cannot assign") || message.contains("32-bit range")) ?
+                node.getLineNumber()-1 : node.getLineNumber() : 
+                -1;
     }
 
     /**

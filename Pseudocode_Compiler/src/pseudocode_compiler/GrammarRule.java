@@ -34,11 +34,12 @@ public enum GrammarRule {
     IO_READ("11b", "io_stmt", 2),
     EXPRESSION_LIST_SINGLE("12a", "expression_list", 1),
     EXPRESSION_LIST_RECURSIVE("12b", "expression_list", 3),
-    CONDITIONAL_IF("13", "conditional", 7),
-    ELSE_IF_RECURSIVE("14a", "else_if_clause", 5),
-    ELSE_IF_EMPTY("14b", "else_if_clause", 0),
-    ELSE_CLAUSE("15a", "else_clause", 2),
-    ELSE_CLAUSE_EMPTY("15b", "else_clause", 0),
+    CONDITIONAL_IF("13", "conditional", 5),
+    CONDITIONAL_IF_TAIL_ELIF("13.5a", "if_tail", 1),
+    CONDITIONAL_IF_TAIL_ELSE("13.5b", "if_tail", 1),
+    CONDITIONAL_IF_TAIL_DONE("13.5c", "if_tail", 1),
+    ELSE_IF_CLAUSE("14", "else_if_clause", 5),
+    ELSE_CLAUSE("15", "else_clause", 3),
 
     //Loops/switch.
     LOOP_WHILE("16a", "loop", 1),

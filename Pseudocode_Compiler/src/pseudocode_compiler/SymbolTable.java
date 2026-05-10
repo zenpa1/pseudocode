@@ -89,6 +89,28 @@ public class SymbolTable {
      * @throws IllegalArgumentException if the variable is not found in any scope
      */
     public void assignVariable(String name, Object value) {
+        Map<String, VariableRecord> currentScope = scopeStack.peek();
+        
+        if(scopeStack.size() > 0) {
+            String dataType = "null";
+            
+            if (value == null) {
+                dataType = "null";
+            } else if (value instanceof Integer) {
+                dataType = "INTEGER";
+            } else if (value instanceof Double) {
+                dataType = "REAL";
+            } else if (value instanceof String) {
+                dataType = "STRING";
+            } else if (value instanceof Boolean) {
+                dataType = "BOOLEAN";
+            }
+            
+            if(!(currentScope.containsKey(name))) {
+                currentScope.put(name, new VariableRecord(dataType, value));
+            }
+        }
+        
         // Search from the top of the stack (current scope) down to the bottom (global)
         for (int i = scopeStack.size() - 1; i >= 0; i--) {
             Map<String, VariableRecord> scope = scopeStack.get(i);

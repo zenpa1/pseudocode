@@ -508,6 +508,10 @@ public class Scanner {
 
                 if (Character.isLetter(current)) {
                     scannedToken = scanIdentifierOrKeyword();
+                    if(scannedToken.getLexeme().equals("please") || scannedToken.getLexeme().equals("the")) {
+                        whiteSpaceAndCommentHandler();
+                        continue;
+                    }  
                 } else if (Character.isDigit(current)) {
                     scannedToken = scanNumberLiteral();
                 } else if (current == '-' && peek() != -1 && Character.isDigit((char) peek())) {

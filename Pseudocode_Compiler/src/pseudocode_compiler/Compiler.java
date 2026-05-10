@@ -79,10 +79,11 @@ public class Compiler {
             System.out.println("--- SCANNING ---");
             SymbolTable scannerSymbolTable = new SymbolTable();
             Scanner scanner = new Scanner(programFile, scannerSymbolTable);
+            scanAndPrintFromFile(programFile);
 
             // Step 2: Parser
             System.out.println("--- PARSING ---");
-            ParsingTable parsingTable = ParsingTable.fromCsv("../../parser_tools/parsing_table.csv");
+            ParsingTable parsingTable = ParsingTable.fromCsv("parser_tools/parsing_table.csv");
             Parser parser = new Parser(scanner, parsingTable);
             ASTNode root = parser.parse();
 

@@ -72,13 +72,15 @@ public abstract class ASTNode {
 //Root program node.
 class ProgramNode extends ASTNode {
 
-    public ProgramNode(DeclSectionNode declarationSection, StmtSectionNode statementSection) {
+    public ProgramNode(DeclSectionNode declarationSection, StmtSectionNode statementSection, int lineNumber) {
         addChild(declarationSection);
         addChild(statementSection);
+        this.lineNumber = lineNumber;
     }
 
-    public ProgramNode(List<? extends ASTNode> nodes) {
+    public ProgramNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -90,8 +92,9 @@ class ProgramNode extends ASTNode {
 //Container for declarations.
 class DeclSectionNode extends ASTNode {
 
-    public DeclSectionNode(List<? extends ASTNode> declarations) {
+    public DeclSectionNode(List<? extends ASTNode> declarations, int lineNumber) {
         addChildren(declarations);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -103,8 +106,9 @@ class DeclSectionNode extends ASTNode {
 //Container for executable statements.
 class StmtSectionNode extends ASTNode {
 
-    public StmtSectionNode(List<? extends ASTNode> statements) {
+    public StmtSectionNode(List<? extends ASTNode> statements, int lineNumber) {
         addChildren(statements);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -116,13 +120,15 @@ class StmtSectionNode extends ASTNode {
 //Assignment statement node.
 class AssignmentNode extends ASTNode {
 
-    public AssignmentNode(IdentifierNode identifier, ASTNode expression) {
+    public AssignmentNode(IdentifierNode identifier, ASTNode expression, int lineNumber) {
         addChild(identifier);
         addChild(expression);
+        this.lineNumber = lineNumber;
     }
 
-    public AssignmentNode(List<? extends ASTNode> nodes) {
+    public AssignmentNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -134,14 +140,16 @@ class AssignmentNode extends ASTNode {
 //Conditional statement node.
 class IfNode extends ASTNode {
 
-    public IfNode(ASTNode condition, StmtSectionNode thenBranch, StmtSectionNode elseBranch) {
+    public IfNode(ASTNode condition, StmtSectionNode thenBranch, StmtSectionNode elseBranch, int lineNumber) {
         addChild(condition);
         addChild(thenBranch);
         addChild(elseBranch);
+        this.lineNumber = lineNumber;
     }
 
-    public IfNode(List<? extends ASTNode> nodes) {
+    public IfNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -153,13 +161,15 @@ class IfNode extends ASTNode {
 //While-loop statement node.
 class WhileLoopNode extends ASTNode {
 
-    public WhileLoopNode(ASTNode condition, StmtSectionNode body) {
+    public WhileLoopNode(ASTNode condition, StmtSectionNode body, int lineNumber) {
         addChild(condition);
         addChild(body);
+        this.lineNumber = lineNumber;
     }
 
-    public WhileLoopNode(List<? extends ASTNode> nodes) {
+    public WhileLoopNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -171,13 +181,15 @@ class WhileLoopNode extends ASTNode {
 //Repeat-until loop statement node.
 class RepeatUntilNode extends ASTNode {
 
-    public RepeatUntilNode(StmtSectionNode body, ASTNode condition) {
+    public RepeatUntilNode(StmtSectionNode body, ASTNode condition, int lineNumber) {
         addChild(body);
         addChild(condition);
+        this.lineNumber = lineNumber;
     }
 
-    public RepeatUntilNode(List<? extends ASTNode> nodes) {
+    public RepeatUntilNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -189,15 +201,17 @@ class RepeatUntilNode extends ASTNode {
 //For-loop statement node.
 class ForLoopNode extends ASTNode {
 
-    public ForLoopNode(IdentifierNode iterator, ASTNode startExpression, ASTNode endExpression, StmtSectionNode body) {
+    public ForLoopNode(IdentifierNode iterator, ASTNode startExpression, ASTNode endExpression, StmtSectionNode body, int lineNumber) {
         addChild(iterator);
         addChild(startExpression);
         addChild(endExpression);
         addChild(body);
+        this.lineNumber = lineNumber;
     }
 
-    public ForLoopNode(List<? extends ASTNode> nodes) {
+    public ForLoopNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -211,10 +225,11 @@ class BinaryExprNode extends ASTNode {
 
     private final String operator;
 
-    public BinaryExprNode(ASTNode leftExpression, String operator, ASTNode rightExpression) {
+    public BinaryExprNode(ASTNode leftExpression, String operator, ASTNode rightExpression, int lineNumber) {
         this.operator = operator;
         addChild(leftExpression);
         addChild(rightExpression);
+        this.lineNumber = lineNumber;
     }
 
     public String getOperator() {
@@ -232,8 +247,9 @@ class LiteralNode extends ASTNode {
 
     private final String value;
 
-    public LiteralNode(String value) {
+    public LiteralNode(String value, int lineNumber) {
         this.value = value;
+        this.lineNumber = lineNumber;
     }
 
     public String getValue() {
@@ -251,8 +267,9 @@ class IdentifierNode extends ASTNode {
 
     private final String name;
 
-    public IdentifierNode(String name) {
+    public IdentifierNode(String name, int lineNumber) {
         this.name = name;
+        this.lineNumber = lineNumber;
     }
 
     public String getName() {
@@ -271,9 +288,10 @@ class TerminalNode extends ASTNode {
     private final String tokenType;
     private final String lexeme;
 
-    public TerminalNode(String tokenType, String lexeme) {
+    public TerminalNode(String tokenType, String lexeme, int lineNumber) {
         this.tokenType = tokenType;
         this.lexeme = lexeme;
+        this.lineNumber = lineNumber;
     }
 
     public String getTokenType() {
@@ -295,9 +313,10 @@ class NonTerminalNode extends ASTNode {
 
     private final String lhs;
 
-    public NonTerminalNode(String lhs, List<? extends ASTNode> nodes) {
+    public NonTerminalNode(String lhs, List<? extends ASTNode> nodes, int lineNumber) {
         this.lhs = lhs;
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     public String getLhs() {
@@ -313,12 +332,14 @@ class NonTerminalNode extends ASTNode {
 //Say statement node (output/print statement).
 class SayNode extends ASTNode {
 
-    public SayNode(ASTNode expression) {
+    public SayNode(ASTNode expression, int lineNumber) {
         addChild(expression);
+        this.lineNumber = lineNumber;
     }
 
-    public SayNode(List<? extends ASTNode> expressions) {
+    public SayNode(List<? extends ASTNode> expressions, int lineNumber) {
         addChildren(expressions);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -332,12 +353,14 @@ class ReadNode extends ASTNode {
 
     private final String variableName;
 
-    public ReadNode(String variableName) {
+    public ReadNode(String variableName, int lineNumber) {
         this.variableName = variableName;
+        this.lineNumber = lineNumber;
     }
 
-    public ReadNode(IdentifierNode identifier) {
+    public ReadNode(IdentifierNode identifier, int lineNumber) {
         this.variableName = identifier.getName();
+        this.lineNumber = lineNumber;
     }
 
     public String getVariableName() {
@@ -371,13 +394,15 @@ class ContinueNode extends ASTNode {
 //Consider (switch) statement node.
 class ConsiderNode extends ASTNode {
 
-    public ConsiderNode(ASTNode expression, List<? extends ASTNode> cases) {
+    public ConsiderNode(ASTNode expression, List<? extends ASTNode> cases, int lineNumber) {
         addChild(expression);
         addChildren(cases);
+        this.lineNumber = lineNumber;
     }
 
-    public ConsiderNode(List<? extends ASTNode> nodes) {
+    public ConsiderNode(List<? extends ASTNode> nodes, int lineNumber) {
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     @Override
@@ -391,14 +416,16 @@ class CaseNode extends ASTNode {
 
     private final Object caseValue;  // The value to match (null for otherwise)
 
-    public CaseNode(Object caseValue, StmtSectionNode body) {
+    public CaseNode(Object caseValue, StmtSectionNode body, int lineNumber) {
         this.caseValue = caseValue;
         addChild(body);
+        this.lineNumber = lineNumber;
     }
 
-    public CaseNode(List<? extends ASTNode> nodes) {
+    public CaseNode(List<? extends ASTNode> nodes, int lineNumber) {
         this.caseValue = null;
         addChildren(nodes);
+        this.lineNumber = lineNumber;
     }
 
     public Object getCaseValue() {
@@ -415,12 +442,14 @@ class CaseNode extends ASTNode {
 //Scope block statement node.
 class ScopeBlockNode extends ASTNode {
 
-    public ScopeBlockNode(StmtSectionNode body) {
+    public ScopeBlockNode(StmtSectionNode body, int lineNumber) {
         addChild(body);
+        this.lineNumber = lineNumber;
     }
 
-    public ScopeBlockNode(List<? extends ASTNode> statements) {
+    public ScopeBlockNode(List<? extends ASTNode> statements, int lineNumber) {
         addChildren(statements);
+        this.lineNumber = lineNumber;
     }
 
     @Override
