@@ -97,6 +97,19 @@ public class Compiler {
             System.out.println("--- ABSTRACT SYNTAX TREE ---");
             root.printTree("", true);
             System.out.println();
+            
+            String expression = root.toTreeExpression();
+            
+            try (java.net.Socket socket = new java.net.Socket("127.0.0.1", 3333);
+                 java.io.PrintStream out = new java.io.PrintStream(socket.getOutputStream())) {
+                
+                out.println(expression);
+                out.flush();
+                System.out.println("AST sent to TreeServer.");
+                
+            } catch (Exception e) {
+                System.err.println("Could not connect to TreeServer: " + e.getMessage());
+            }
 
             // Step 4: Interpreter
             System.out.println("--- INTERPRETATION ---");

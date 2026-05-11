@@ -2,6 +2,7 @@ package pseudocode_compiler;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 
 /**
@@ -629,7 +630,7 @@ public class Interpreter {
      * @return null
      * @throws InterpreterException if an error occurs during evaluation
      */
-    private Object executeIfNode(IfNode node) throws InterpreterException {
+    private Object executeIfNode(IfNode node) throws InterpreterException, BreakException, ContinueException {
 
         //System.err.println("DEBUG: op exists = " + symbolTable.variableExists("op"));
         // Execute pre-if statements (read op)
@@ -704,9 +705,11 @@ public class Interpreter {
                 symbolTable.enterScope();
                 try {
                     evaluate(thenBranch);
-                } finally {
+                } catch(BreakException | ContinueException e) {
+                    throw e;
+                }
+                finally {
                     symbolTable.exitScope();
-                    return null;
                 }
             } else if (tailPrefix.equals("else_if")) {
                 //System.err.println("DEBUG calling executeThenBodyFromElseIf");
@@ -728,7 +731,7 @@ public class Interpreter {
         return null;
     }
 
-    private void executeThenBodyFromElseIf(ASTNode elseIfClause) throws InterpreterException {
+    private void executeThenBodyFromElseIf(ASTNode elseIfClause) throws InterpreterException, BreakException, ContinueException {
         symbolTable.enterScope();
         try {
             for (ASTNode child : elseIfClause.children) {
@@ -747,12 +750,14 @@ public class Interpreter {
                     return;
                 }
             }
+        }catch(ContinueException | BreakException e) { 
+                    throw e;
         } finally {
             symbolTable.exitScope();
         }
     }
 
-    private boolean evaluateElseIfChain(ASTNode elseIfClause) throws InterpreterException {
+    private boolean evaluateElseIfChain(ASTNode elseIfClause) throws InterpreterException, BreakException, ContinueException {
         if (!(elseIfClause instanceof NonTerminalNode)) {
             return false;
         }
@@ -841,7 +846,8 @@ public class Interpreter {
                 if (elseIfClause.children.get(3) != null) {
                     evaluate(elseIfClause.children.get(3));
                 }
-            } finally {
+            } catch(BreakException | ContinueException e) { throw e; }
+            finally {
                 symbolTable.exitScope();
             }
             return true;
@@ -1188,14 +1194,18 @@ public class Interpreter {
      * @return null
      * @throws InterpreterException if an error occurs during evaluation
      */
-    private Object executeScopeBlockNode(NonTerminalNode node) throws InterpreterException {       
+    private Object executeScopeBlockNode(NonTerminalNode node) throws InterpreterException {      
+        Map<String, Object> snapshot = symbolTable.snapshotVisibleValues();
         symbolTable.enterScope();
         try {
             for (ASTNode child : node.children.get(2).children) {
                 evaluate(child);
             }
+        } catch (BreakException | ContinueException e) {
+            throw e; // re-propagate so the enclosing loop can handle it
         } finally {
             symbolTable.exitScope();
+            symbolTable.restoreValues(snapshot);
         }
         return null;
     }
@@ -1708,7 +1718,7 @@ public class Interpreter {
      * @return the result of evaluation (value of last child)
      * @throws InterpreterException if evaluation fails
      */
-    private Object evaluateNonTerminalNode(NonTerminalNode node) throws InterpreterException {
+    private Object evaluateNonTerminalNode(NonTerminalNode node) throws InterpreterException, BreakException, ContinueException {
         //System.err.println("DEBUG NonTerminalNode: " + node.getLhs());
         String label = node.getLhs();
 
@@ -1936,13 +1946,25 @@ public class Interpreter {
                     symbolTable.enterScope();
                     try {
                         evaluate(thenBody);
-                    } finally {
+                    } catch (BreakException | ContinueException e) {
+                        throw e; // re-propagate so the enclosing loop can handle it
+                    }
+                    finally {
                         symbolTable.exitScope();
                     }
                 } else if (elseIfClause != null && hasNonTerminalChildren(elseIfClause)) {
-                    evaluate(elseIfClause);
+                    try {
+                        evaluate(elseIfClause);
+                    } catch (BreakException | ContinueException e) {
+                        throw e; // re-propagate so the enclosing loop can handle it
+                    }
                 } else if (elseClause != null) {
-                    evaluate(elseClause);
+                    try {
+                        evaluate(elseClause);
+                    }
+                    catch (BreakException | ContinueException e) {
+                        throw e; // re-propagate so the enclosing loop can handle it
+                    }
                 }
                 return null;
             }
@@ -1950,8 +1972,13 @@ public class Interpreter {
             case "else_if_clause":
                 // Pass-through — contains nested conditionals if present
                 for (ASTNode child : node.children) {
-                    if (!(child instanceof TerminalNode)) {
-                        evaluate(child);
+                    try {
+                        if (!(child instanceof TerminalNode)) {
+                            evaluate(child);
+                        }
+                    }
+                    catch (BreakException | ContinueException e) {
+                        throw e; // re-propagate so the enclosing loop can handle it
                     }
                 }
                 return null;
@@ -1966,7 +1993,10 @@ public class Interpreter {
                         }
                         evaluate(child);
                     }
-                } finally {
+                } catch (BreakException | ContinueException e) {
+                        throw e; // re-propagate so the enclosing loop can handle it
+                    }
+                finally {
                     symbolTable.exitScope();
                 }
                 return null;
@@ -2033,6 +2063,15 @@ public class Interpreter {
                 
             case "scope_statement":
                 return executeScopeBlockNode(node);
+                
+            case "loop_control":
+                ASTNode temp = node.children.get(0);
+                if(((TerminalNode) temp).getLexeme().equals("break")) {
+                    throw new BreakException();
+                }
+                else {
+                    throw new ContinueException();
+                }
 
             default: {
                 Object result = null;

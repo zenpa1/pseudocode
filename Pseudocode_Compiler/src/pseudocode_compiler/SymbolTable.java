@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Stack;
+import java.util.Map;
 
 /**
  * Symbol table for managing variables during interpretation.
@@ -89,7 +90,7 @@ public class SymbolTable {
      * @throws IllegalArgumentException if the variable is not found in any scope
      */
     public void assignVariable(String name, Object value) {
-        Map<String, VariableRecord> currentScope = scopeStack.peek();
+        /*Map<String, VariableRecord> currentScope = scopeStack.peek();
         
         if(scopeStack.size() > 0) {
             String dataType = "null";
@@ -109,7 +110,7 @@ public class SymbolTable {
             if(!(currentScope.containsKey(name))) {
                 currentScope.put(name, new VariableRecord(dataType, value));
             }
-        }
+        }*/
         
         // Search from the top of the stack (current scope) down to the bottom (global)
         for (int i = scopeStack.size() - 1; i >= 0; i--) {
@@ -195,5 +196,33 @@ public class SymbolTable {
      */
     public int getScopeDepth() {
         return scopeStack.size();
+    }
+    
+    /**
+    * Snapshots the current value of every variable visible from the current scope.
+    * Used by scope blocks to restore values after the block exits.
+    */
+    public Map<String, Object> snapshotVisibleValues() {
+        Map<String, Object> snapshot = new HashMap<>();
+        // Walk from global up to current — later scopes override earlier ones
+        for (int i = 0; i < scopeStack.size(); i++) {
+            for (Map.Entry<String, VariableRecord> entry : scopeStack.get(i).entrySet()) {
+                snapshot.put(entry.getKey(), entry.getValue().getValue());
+            }
+        }
+        return snapshot;
+    }
+ 
+    /**
+     * Restores variable values from a snapshot taken before a scope block ran.
+     * Only restores variables that still exist (doesn't re-create ones declared
+     * inside the block, which were removed when the scope exited).
+     */
+    public void restoreValues(Map<String, Object> snapshot) {
+        for (Map.Entry<String, Object> entry : snapshot.entrySet()) {
+            if (variableExists(entry.getKey())) {
+                assignVariable(entry.getKey(), entry.getValue());
+            }
+        }
     }
 }
